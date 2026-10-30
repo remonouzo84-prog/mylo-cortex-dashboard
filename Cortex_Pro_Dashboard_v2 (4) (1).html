@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>mylo | إدارة عمليات التحصيل</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+/* Storage polyfill for sandboxed documents */
+(function(){
+  function makeStore(prefix){
+    var mem={};
+    return {
+      getItem:function(k){k=prefix+k; return Object.prototype.hasOwnProperty.call(mem,k)?mem[k]:null;},
+      setItem:function(k,v){mem[prefix+k]=String(v);},
+      removeItem:function(k){delete mem[prefix+k];},
+      clear:function(){mem={};},
+      key:function(i){return Object.keys(mem)[i]||null;},
+      get length(){return Object.keys(mem).length;}
+    };
+  }
+  function needsPoly(store){
+    try{ var t='__mylo_t'; store.setItem(t,'1'); store.removeItem(t); return false; }catch(e){ return true; }
+  }
+  try{
+    if(typeof localStorage==='undefined' || needsPoly(localStorage)){
+      try{ Object.defineProperty(window,'localStorage',{value:makeStore('L:'), configurable:true}); }
+      catch(e){ window.localStorage=makeStore('L:'); }
+    }
+  }catch(e){ try{ window.localStorage=makeStore('L:'); }catch(e2){} }
+  try{
+    if(typeof sessionStorage==='undefined' || needsPoly(sessionStorage)){
+      try{ Object.defineProperty(window,'sessionStorage',{value:makeStore('S:'), configurable:true}); }
+      catch(e){ window.sessionStorage=makeStore('S:'); }
+    }
+  }catch(e){ try{ window.sessionStorage=makeStore('S:'); }catch(e2){} }
+})();
+</script>
+<style>
+:root{
+  --pink:#ec4899; --purple:#7c3aed; --violet:#a855f7;
+  --bg:#f5f0fa; --card:#fff; --text:#1e1b2e; --muted:#6b657a;
+  --border:rgba(124,58,237,.14); --ok:#059669; --warn:#d97706; --danger:#dc2626;
+  --radius:16px; --shadow:0 8px 28px rgba(124,58,237,.08);
+  --font:'Segoe UI', Tahoma, 'Noto Sans Arabic', Arial, sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse 80% 50% at 10% 0%,rgba(236,72,153,.12),transparent 50%),
+  radial-gradient(ellipse 60% 40% at 100% 20%,rgba(124,58,237,.1),transparent 45%)}
+.hidden,[hidden]{display:none!important}
+
+/* Login */
+.login-gate{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;
+  background:linear-gradient(160deg,#fdf2f8,#f5f0fa 40%,#ede9fe)}
+#loginGate.is-out,body.unlocked #loginGate{display:none!important}
+#appShell{display:none}
+#appShell.is-on,body.unlocked #appShell{display:block!important}
+.login-card{width:100%;max-width:400px;background:#fff;border-radius:24px;padding:36px 28px;text-align:center;
+  border:1px solid var(--border);box-shadow:0 24px 64px rgba(124,58,237,.14)}
+.login-logo{width:72px;height:72px;margin:0 auto 14px;border-radius:20px;display:grid;place-items:center;
+  background:linear-gradient(145deg,#ec4899,#a855f7 50%,#7c3aed);box-shadow:0 12px 32px rgba(236,72,153,.4);color:#fff;font-weight:800;font-size:1.3rem}
+.login-card h1{font-size:1.15rem;margin-bottom:6px}
+.login-card .sub{color:var(--muted);font-size:.8rem;margin-bottom:22px}
+.login-card input{width:100%;padding:14px;border-radius:12px;border:1.5px solid var(--border);text-align:center;
+  font-size:1.1rem;font-weight:700;letter-spacing:.12em;margin-bottom:12px;font-family:inherit}
+.login-card input:focus,.fg input:focus,.fg select:focus,.search:focus{
+  outline:none;border-color:var(--pink);box-shadow:0 0 0 4px rgba(236,72,153,.14)}
+.login-card button{width:100%;padding:14px;border:0;border-radius:12px;font-family:inherit;font-weight:800;font-size:.95rem;
+  color:#fff;cursor:pointer;background:linear-gradient(135deg,#db2777,#7c3aed);box-shadow:0 8px 24px rgba(219,39,121,.35)}
+.login-err{color:var(--danger);font-size:.8rem;font-weight:700;margin-top:10px}
+.login-hint{font-size:.72rem;color:var(--muted);margin-top:12px}
+
+.app{position:relative;z-index:1;max-width:1680px;margin:0 auto;padding-bottom:40px}
+.hdr{position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);background:rgba(255,255,255,.92);
+  border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.logo{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;color:#fff;font-weight:800;flex-shrink:0;
+  background:linear-gradient(145deg,#ec4899,#a855f7 50%,#7c3aed);box-shadow:0 8px 20px rgba(236,72,153,.35)}
+.brand h1{font-size:1rem;font-weight:800}
+.brand p{font-size:.7rem;color:var(--muted)}
+.hdr-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{background:#fff;border:1px solid var(--border);color:var(--text);padding:9px 14px;border-radius:12px;
+  font-family:inherit;font-size:.78rem;font-weight:700;cursor:pointer;transition:.2s}
+.btn:hover{border-color:rgba(236,72,153,.45);background:#fdf2f8}
+.btn:focus-visible{outline:2px solid var(--pink);outline-offset:2px}
+.btn-p{background:linear-gradient(135deg,#db2777,#7c3aed);color:#fff;border:none}
+.btn-p:hover{filter:brightness(1.06)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;font-size:.72rem;font-weight:700;
+  background:#fdf2f8;color:#9d174d;border:1px solid rgba(236,72,153,.25)}
+.chip.warn{background:#fff7ed;color:#c2410c;border-color:#fed7aa}
+.chip.danger{background:#fef2f2;color:#b91c1c;border-color:#fecaca}
+.badge-count{background:var(--danger);color:#fff;border-radius:999px;padding:1px 7px;font-size:.68rem;margin-right:4px}
+
+.nav{display:flex;gap:8px;padding:12px 16px 0;flex-wrap:wrap}
+.nav-btn{padding:10px 14px;border-radius:999px;border:1px solid var(--border);background:#fff;color:var(--muted);
+  font-family:inherit;font-size:.76rem;font-weight:700;cursor:pointer}
+.nav-btn.active,.nav-btn:hover{background:rgba(236,72,153,.12);color:#9d174d;border-color:rgba(236,72,153,.35)}
+.nav-btn:focus-visible{outline:2px solid var(--pink);outline-offset:2px}
+
+.wrap{padding:16px}
+.panel{display:none}
+.panel.active{display:block}
+
+.filters{display:flex;flex-wrap:wrap;gap:10px;background:#fff;border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px;margin-bottom:14px;box-shadow:var(--shadow);align-items:flex-end}
+.fg{display:flex;flex-direction:column;gap:4px;min-width:120px}
+.fg label{font-size:.7rem;font-weight:700;color:var(--muted)}
+.fg select,.fg input,.search{padding:8px 10px;border-radius:10px;border:1px solid var(--border);font-family:inherit;font-size:.8rem;background:#faf7fd}
+.fg input[type="date"]{min-width:150px;color:var(--text)}
+.search{min-width:180px}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.kpi{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+.kpi::after{content:'';position:absolute;top:0;right:0;width:4px;height:100%;background:var(--k,var(--pink));border-radius:0 var(--radius) var(--radius) 0}
+.kpi .l{font-size:.7rem;color:var(--muted);font-weight:700}
+.kpi .v{font-size:1.5rem;font-weight:800;margin-top:4px}
+.kpi .s{font-size:.68rem;color:var(--muted);margin-top:4px}
+
+.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:14px}
+.card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.card h3{font-size:.9rem;margin-bottom:12px}
+.card canvas{max-height:240px}
+
+.mgr{background:linear-gradient(135deg,#fdf2f8,#f5f3ff);border:1px solid rgba(236,72,153,.22);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.mgr h3{color:#9d174d;margin-bottom:8px;font-size:.95rem}
+.mgr p,.mgr li{font-size:.82rem;color:#5b5675;line-height:1.65}
+.mgr ul{padding-right:18px;margin-top:6px}
+
+.alert-list{display:flex;flex-direction:column;gap:8px}
+.alert-item{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:12px;border:1px solid var(--border);background:#fff}
+.alert-item.high{border-color:#fecaca;background:#fef2f2}
+.alert-item.med{border-color:#fed7aa;background:#fff7ed}
+.alert-item .t{font-weight:800;font-size:.8rem}
+.alert-item .d{font-size:.75rem;color:var(--muted);margin-top:3px}
+.alert-item button{margin-right:auto;font-size:.7rem}
+
+.gcard{border:1px solid var(--border);border-radius:var(--radius);background:#fff;margin-bottom:12px;overflow:hidden;box-shadow:var(--shadow)}
+.ghead{padding:14px 16px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;gap:10px}
+.ghead h3{font-size:.88rem}
+.gbody{display:none;padding:0 16px 16px;border-top:1px solid var(--border)}
+.gcard.open .gbody{display:block}
+.esc-path{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.esc-path span{font-size:.68rem;font-weight:700;padding:5px 10px;border-radius:999px;background:#f3eef9;color:var(--muted)}
+.esc-path span.on{background:rgba(236,72,153,.15);color:#9d174d}
+.esc-path span.done{background:rgba(5,150,105,.12);color:#047857}
+.case{border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:8px;background:#faf7fd}
+.case b{font-size:.78rem}
+.case p{font-size:.75rem;color:var(--muted);margin-top:4px;line-height:1.5}
+.sol{display:inline-block;margin-top:6px;padding:4px 10px;border-radius:8px;background:rgba(236,72,153,.1);color:#9d174d;font-size:.72rem;font-weight:700}
+.tabs2{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
+.tabs2 button{padding:7px 12px;border-radius:999px;border:1px solid var(--border);background:#f5f0fa;font-family:inherit;font-size:.72rem;font-weight:700;cursor:pointer}
+.tabs2 button.on{background:rgba(236,72,153,.14);color:#9d174d;border-color:rgba(236,72,153,.4)}
+.script-box{background:#faf7fd;border:1px solid var(--border);border-radius:12px;padding:12px;font-size:.78rem;line-height:1.7}
+.dont{color:var(--danger);font-size:.75rem}
+
+table{width:100%;border-collapse:collapse;font-size:.75rem}
+th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:right}
+th{background:#f3eef9;color:var(--muted);font-weight:700;position:sticky;top:0}
+.tbl-wrap{max-height:420px;overflow:auto;border:1px solid var(--border);border-radius:12px}
+
+.agent-row{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;background:#fff;flex-wrap:wrap}
+.agent-row .bar{flex:1;min-width:80px;height:8px;background:#f3eef9;border-radius:99px;overflow:hidden}
+.agent-row .bar i{display:block;height:100%;background:linear-gradient(90deg,#ec4899,#7c3aed);border-radius:99px}
+.qscore{font-weight:800;font-size:.85rem}
+.qscore.good{color:var(--ok)} .qscore.mid{color:var(--warn)} .qscore.bad{color:var(--danger)}
+
+.msg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.msg-card{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff}
+.msg-card h4{font-size:.8rem;margin-bottom:6px;color:#9d174d}
+.msg-card p{font-size:.75rem;color:var(--muted);line-height:1.55;min-height:60px}
+.msg-card button{margin-top:8px}
+
+.quick{display:grid;grid-template-columns:1fr 1.2fr;gap:12px}
+@media(max-width:800px){
+  .quick{grid-template-columns:1fr}
+  .hdr{padding:10px 12px}
+  .brand h1{font-size:.9rem}
+  .kpi .v{font-size:1.25rem}
+}
+.case-card{border:1px solid var(--border);border-radius:var(--radius);padding:14px;background:#fff;min-height:120px}
+.delta{font-size:.75rem;font-weight:800}
+.delta.up{color:var(--ok)} .delta.down{color:var(--danger)}
+.sol-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.sol-card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);
+  border-top:4px solid var(--pink)}
+.sol-card h3{font-size:.95rem;margin-bottom:8px;color:#9d174d}
+.sol-card p{font-size:.8rem;color:var(--muted);line-height:1.65}
+.sol-card .sol{margin-top:10px}
+
+.ft{text-align:center;padding:20px;color:var(--muted);font-size:.72rem}
+.exec-hide{transition:.2s}
+body.exec-mode .exec-hide{display:none!important}
+body.exec-mode .kpi .v{font-size:1.85rem}
+
+@media print{
+  .hdr-actions,.nav,.filters,.login-gate,body::before,#btnUpload,#btnRefresh{display:none!important}
+  .panel{display:block!important}
+  body{background:#fff}
+  .card,.kpi,.mgr{box-shadow:none;break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<div class="login-gate" id="loginGate">
+  <div class="login-card">
+    <div class="login-logo">mylo</div>
+    <h1>إدارة عمليات التحصيل</h1>
+    <p class="sub">قطاع التحصيل — للاستخدام الداخلي فقط</p>
+    <input type="password" id="empCode" inputmode="numeric" placeholder="رمز الموظف" maxlength="12" autocomplete="off" />
+    <button type="button" id="loginBtn" onclick="window.doLogin&&window.doLogin()">دخول</button>
+    <p class="login-err" id="loginErr" hidden>رمز غير صحيح</p>
+    <p class="login-hint">رمز مؤقت: 23478 — صلاحيات المديرين تُضاف لاحقاً</p>
+  </div>
+</div>
+
+<div class="app" id="appShell" hidden>
+  <header class="hdr">
+    <div class="brand">
+      <div class="logo">mylo</div>
+      <div>
+        <h1>إدارة عمليات التحصيل <span style="color:var(--pink)">Pro</span></h1>
+        <p>حلول مطابقة للشريعة الإسلامية · تفاوض · أداء · تنبيهات</p>
+      </div>
+    </div>
+    <div class="hdr-actions">
+      <span class="chip" id="userChip">موظف</span>
+      <span class="chip warn" id="alertChip" title="تنبيهات">تنبيهات <span class="badge-count" id="alertCount">0</span></span>
+      <button class="btn" id="btnExec" type="button">وضع المدير</button>
+      <button class="btn" id="btnUpload" type="button">رفع ملفات</button>
+      <input type="file" id="fileInput" multiple accept=".xlsx,.xls,.csv,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,text/csv,*/*" style="position:fixed;left:-9999px;opacity:0;width:1px;height:1px" />
+      <button class="btn" id="btnRefresh" type="button">تحديث</button>
+      <button class="btn" id="btnExpCalls" type="button">تصدير المكالمات</button>
+      <button class="btn" id="btnExpVisits" type="button">تصدير الزيارات</button>
+      <button class="btn btn-p" id="btnPrint" type="button">طباعة</button>
+      <span id="uploadStatus" style="font-size:12px;color:#7c3aed;font-weight:700"></span>
+    </div>
+  </header>
+
+  <nav class="nav">
+    <button class="nav-btn active" data-p="overview">نظرة عامة</button>
+    <button class="nav-btn" data-p="alerts">المتابعة والتنبيهات</button>
+    <button class="nav-btn" data-p="promises">سجل الوعود</button>
+    <button class="nav-btn" data-p="solutions">حلول mylo</button>
+    <button class="nav-btn" data-p="groups">المجموعات والتفاوض</button>
+    <button class="nav-btn" data-p="agents">أداء الموظفين</button>
+    <button class="nav-btn" data-p="daily">تقرير المدير</button>
+    <button class="nav-btn" data-p="messages">قوالب الرسائل</button>
+    <button class="nav-btn" data-p="data">السجلات</button>
+  </nav>
+
+  <div class="wrap">
+    <section class="panel active" id="p-overview">
+      <div class="filters exec-hide">
+        <div class="fg"><label>area</label><select id="fArea"><option value="">الكل</option></select></div>
+        <div class="fg"><label>name</label><select id="fAgent"><option value="">الكل</option></select></div>
+        <div class="fg"><label>call_outcome</label><select id="fOutcome"><option value="">الكل</option></select></div>
+        <div class="fg"><label>visit_output</label><select id="fVisitOut"><option value="">الكل</option></select></div>
+        <div class="fg"><label>من تاريخ</label><input type="date" id="fFrom" /></div>
+        <div class="fg"><label>إلى تاريخ</label><input type="date" id="fTo" /></div>
+        <div class="fg"><label>بحث عميل</label><input class="search" id="fSearch" placeholder="consumer_id / هاتف / ملاحظات" /></div>
+        <div class="fg" style="justify-content:flex-end"><label>&nbsp;</label><button class="btn" type="button" id="btnReset">إعادة تعيين</button></div>
+      </div>
+      <div class="mgr" id="mgrSummary"></div>
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="grid-2 exec-hide" id="deltaRow"></div>
+      <div class="quick exec-hide" style="margin-bottom:14px">
+        <div class="card">
+          <h3>بحث عميل موحّد</h3>
+          <input class="search" id="quickSearch" placeholder="consumer_id أو رقم الهاتف" style="width:100%;margin-bottom:10px" />
+          <button class="btn btn-p" type="button" id="btnQuick" style="width:100%">عرض بطاقة العميل</button>
+        </div>
+        <div class="case-card" id="quickCard"><p style="color:var(--muted);font-size:.85rem">أدخل معرف العميل أو الهاتف لعرض آخر مكالمة/زيارة والمجموعة والتنبيهات.</p></div>
+      </div>
+      <div class="grid-2 exec-hide">
+        <div class="card"><h3>نتائج المكالمات</h3><canvas id="cOut"></canvas></div>
+        <div class="card"><h3>نتائج الزيارات</h3><canvas id="cVout"></canvas></div>
+        <div class="card"><h3>التوزيع حسب area</h3><canvas id="cArea"></canvas></div>
+        <div class="card"><h3>recommended_action</h3><canvas id="cAct"></canvas></div>
+        <div class="card"><h3>النشاط اليومي</h3><canvas id="cDaily"></canvas></div>
+        <div class="card"><h3>نشاط الموظفين</h3><canvas id="cAgents"></canvas></div>
+      </div>
+    </section>
+
+    <section class="panel" id="p-alerts">
+      <div class="mgr"><h3>المتابعة والتنبيهات</h3>
+        <p>PTP متأخر · زيارة بلا تاريخ/طرف · LEGAL_ACTION قديم · تكرار NO_ANSWER — الحدود قابلة للضبط من الإعدادات التشغيلية.</p>
+      </div>
+      <div class="alert-list" id="alertList"></div>
+    </section>
+
+    <section class="panel" id="p-promises">
+      <div class="mgr"><h3>سجل وعود السداد (Promise Tracker)</h3>
+        <p>تتبع PROMISE_TO_PAY من المكالمات والزيارات مع حالة المتابعة المحلية.</p></div>
+      <div class="filters">
+        <div class="fg"><label>الحالة</label>
+          <select id="promFilter">
+            <option value="">الكل</option>
+            <option value="open">قائم</option>
+            <option value="due">مستحق / متأخر</option>
+            <option value="kept">محقَّق</option>
+            <option value="broken">مخفق</option>
+          </select>
+        </div>
+      </div>
+      <div class="tbl-wrap card" style="padding:0">
+        <table>
+          <thead><tr><th>المصدر</th><th>العميل</th><th>المنطقة</th><th>الموظف</th><th>التاريخ</th><th>الحالة</th><th>إجراء</th></tr></thead>
+          <tbody id="promBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" id="p-solutions">
+      <div class="mgr">
+        <h3>حلول mylo التحصيلية — مطابقة للشريعة الإسلامية</h3>
+        <p>من المادة التدريبية الرسمية · بدون رسوم إضافية في الرسائل المعتمدة.</p>
+      </div>
+      <div class="sol-grid">
+        <div class="sol-card">
+          <h3>1) جدولة المديونية</h3>
+          <p>إعادة جدولة المستحقات على أقساط ميسّرة عبر التطبيق عند وجود قدرة سداد جزئية واستعداد للالتزام.</p>
+          <span class="sol">الأنسب لمجموعة الفرص الودية / نشاط تجاري</span>
+        </div>
+        <div class="sol-card">
+          <h3>2) ترحيل القسط</h3>
+          <p>تأجيل قسط لفترة محددة لظرف مؤقت مع اتفاق واضح على تاريخ الاستئناف.</p>
+          <span class="sol">الأنسب لظرف إنساني مؤقت مع تواصل المدين</span>
+        </div>
+        <div class="sol-card">
+          <h3>3) إنهاء القرض</h3>
+          <p>تسوية نهائية للمديونية عند توفر مبلغ الإغلاق أو اتفاق تسوية معتمد.</p>
+          <span class="sol">بعد جدية مثبتة ومراجعة المدير</span>
+        </div>
+        <div class="sol-card">
+          <h3>مسار التصعيد المرئي</h3>
+          <div class="esc-path">
+            <span class="done">تواصل ودي</span><span class="done">وعد سداد</span><span class="on">متابعة</span><span>إنذار</span><span>إجراء قانوني</span>
+          </div>
+          <p style="font-size:.78rem;color:var(--muted);margin-top:8px">يُحدَّد موضع العميل على المسار حسب مجموعته ونتائج آخر تفاعل.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="p-groups">
+      <div class="mgr"><h3>المجموعات والتفاوض</h3>
+        <p>لكل مجموعة: إجراءات المدير، الحل الأنسب، سكربت تفاوض، ومسار تصعيد — تُحدَّث تلقائياً بعد رفع ملف جديد.</p></div>
+      <div id="groupsBox"></div>
+    </section>
+
+    <section class="panel" id="p-agents">
+      <div class="mgr"><h3>أداء الموظفين — منظور مدير التحصيل</h3>
+        <p>الترتيب حسب النشاط + درجة جودة التوثيق + نصيحة تشغيلية.</p></div>
+      <div id="agentsBox"></div>
+    </section>
+
+    <section class="panel" id="p-daily">
+      <div class="mgr"><h3>تقرير المدير اليومي</h3>
+        <p>ملخص تنفيذي قابل للطباعة والنسخ.</p>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-p" type="button" id="btnCopyDaily">نسخ الملخص</button>
+          <button class="btn" type="button" onclick="window.print()">طباعة التقرير</button>
+        </div>
+      </div>
+      <div class="card" id="dailyReport" style="line-height:1.8;font-size:.85rem"></div>
+    </section>
+
+    <section class="panel" id="p-messages">
+      <div class="mgr"><h3>قوالب رسائل جاهزة</h3><p>انسخ وأدرج [الاسم] [التاريخ] [رقم التواصل].</p></div>
+      <div class="msg-grid" id="msgGrid"></div>
+    </section>
+
+    <section class="panel" id="p-data">
+      <div class="card exec-hide" style="margin-bottom:12px">
+        <h3>المكالمات</h3>
+        <div class="tbl-wrap"><table><thead><tr><th>name</th><th>area</th><th>call_outcome</th><th>recommended_action</th><th>notes</th></tr></thead><tbody id="callsBody"></tbody></table></div>
+      </div>
+      <div class="card exec-hide">
+        <h3>الزيارات</h3>
+        <div class="tbl-wrap"><table><thead><tr><th>name</th><th>area</th><th>visit_output</th><th>recommended_action</th><th>notes</th></tr></thead><tbody id="visitsBody"></tbody></table></div>
+      </div>
+    </section>
+  </div>
+  <footer class="ft">mylo · إدارة عمليات التحصيل Pro · حلول مطابقة للشريعة الإسلامية · الاستخدام الداخلي</footer>
+</div>
+
+<script>
+window.EMBEDDED_CALLS = [{"id": "06465bf2-c121-47a9-8abc-67d4b8149c8b", "consumer_id": "ece0fd98-b3d0-4244-bc93-ea3ca9d36515", "consumer_phone_number": "201141845296", "agent_iam_id": "9c86b324-5ee8-4eb7-816d-23c522d31c43", "ring_started_at": "2026-08-11 11:09:24", "ring_ended_at": "2026-08-11 11:09:41", "ring_duration_seconds": 18, "call_started_at": "2026-08-11 11:09:41", "call_ended_at": "2026-08-11 11:10:33", "call_duration_seconds": 51, "call_state": "COMPLETED", "call_outcome": "PROMISE_TO_PAY", "recommended_action": "POSTPONE_INTERACTION", "notes": ".", "created_at": "2026-08-11 11:09:25", "created_by": "9c86b324-5ee8-4eb7-816d-23c522d31c43", "updated_at": "2026-08-11 11:10:36", "updated_by": "9c86b324-5ee8-4eb7-816d-23c522d31c43", "id2": "1dda6352-a59f-4c05-a4b7-7d4442f044cf", "name": "Ahmed Ibrahim ShehatAbdElLatif", "email": "a.shehata@btech.com", "phone_number": "201282345382", "area": "Upper Egypt", "iam_id": "9c86b324-5ee8-4eb7-816d-23c522d31c43", "created_at3": "2026-06-10 13:51:28", "updated_at4": "2026-07-22 12:07:34", "national_id": 28901282200191}, {"id": "d55cbae4-9c94-439f-993e-72f1dc6df3f7", "consumer_id": "f5230d4e-6bca-4438-a8c1-fa556a19059d", "consumer_phone_number": "201128832885", "agent_iam_id": "a89f43ec-be95-42bd-9735-69adac61269a", "ring_started_at": "2026-08-11 11:09:19", "ring_ended_at": "2026-08-11 11:09:40", "ring_duration_seconds": 21, "call_started_at": "2026-08-11 11:09:40", "call_ended_at": "2026-08-11 11:10:51", "call_duration_seconds": 72, "call_state": "COMPLETED", "call_outcome": "PROMISE_TO_PAY", "recommended_action": "CALL", "notes": null, "created_at": "2026-08-11 11:09:19", "created_by": "a89f43ec-be95-42bd-9735-69adac61269a", "updated_at": "2026-08-11 11:10:54", "updated_by": "a89f43ec-be95-42bd-9735-69adac61269a", "id2": "7096fd64-442f-448d-aa66-6dc912299de0", "name": "merfat.ezzedin", "email": "merfat.ezzeldin@myloapp.com", "phone_number": "201062207715", "area": "Cairo", "iam_id": "a89f43ec-be95-42bd-9735-69adac61269a", "created_at3": "2026-07-07 10:08:36", "updated_at4": "2026-07-07 10:08:36", "national_id": 29708092200886}, {"id": "8c53764a-5acb-4d01-8d37-023604aec04a", "consumer_id": "a228ad97-0cc1-4519-a7a5-52d1d2c0dfed", "consumer_phone_number": "201027242270", "agent_iam_id": "1e06b56e-d92b-4c5c-ba33-18e0407f24e3", "ring_started_at": "2026-07-06 13:33:05", "ring_ended_at": "2026-07-06 13:33:15", "ring_duration_seconds": 11, "call_started_at": "2026-07-06 13:33:15", "call_ended_at": "2026-07-06 13:35:03", "call_duration_seconds": 108, "call_state": "COMPLETED", "call_outcome": "UNABLE_TO_PAY", "recommended_action": "IN_APP_RESCHEDULING", "notes": "العميل عربيته عامله حادثه وعايز يعمل جدوله لعدم قدرته على السداد", "created_at": "2026-07-06 13:33:06", "created_by": "1e06b56e-d92b-4c5c-ba33-18e0407f24e3", "updated_at": "2026-07-06 13:35:34", "updated_by": "1e06b56e-d92b-4c5c-ba33-18e0407f24e3", "id2": "3971f0c5-1501-4c22-beae-d46feadfd4ed", "name": "Salama Mosleh Salama Sayed AbdAlGhani", "email": "salama.abdelghany@btech.com", "phone_number": "201094781804", "area": "Delta", "iam_id": "1e06b56e-d92b-4c5c-ba33-18e0407f24e3", "created_at3": "2026-06-10 11:51:13", "updated_at4": "2026-06-11 09:37:42", "national_id": 29310071700338}, {"id": "3b7f89bc-7234-4155-baac-b04aa91a5705", "consumer_id": "f9fe9e2d-aadb-498b-93ae-ae90dd8f163a", "consumer_phone_number": "201010012643", "agent_iam_id": "a74939a9-88c3-4dde-8dde-714959fb428e", "ring_started_at": "2026-08-13 11:58:09", "ring_ended_at": "2026-08-13 11:58:34", "ring_duration_seconds": 25, "call_started_at": "2026-08-13 11:58:34", "call_ended_at": "2026-08-13 12:00:35", "call_duration_seconds": 121, "call_state": "COMPLETED", "call_outcome": "UNABLE_TO_PAY", "recommended_action": null, "notes": "العميل يريد جدولة الاقساط عن طريق التطبيق", "created_at": "2026-08-13 11:58:11", "created_by": "a74939a9-88c3-4dde-8dde-714959fb428e", "updated_at": "2026-08-13 12:00:47", "updated_by": "a74939a9-88c3-4dde-8dde-714959fb428e", "id2": "08f80dfa-1863-4fee-bb4a-dc9a6740ed23", "name": "Mohamed Tayseer Abbas Ali", "email": "mohamed.abaas@btech.com", "phone_number": "201008968990", "area": "Alexandria", "iam_id": "a74939a9-88c3-4dde-8dde-714959fb428e", "created_at3": "2026-06-10 11:33:15", "updated_at4": "2026-06-10 11:33:15", "national_id": 28903240200673}, {"id": "a9ea94ed-3f64-47e2-969f-a48eafc92972", "consumer_id": "749f9630-d9dd-4c62-ab87-ad77b26f63be", "consumer_phone_number": "201096200669", "agent_iam_id": "59f62411-98d8-4b79-b666-b5cc530941af", "ring_started_at": "2026-07-06 12:10:40", "ring_ended_at": "2026-07-06 12:10:47", "ring_duration_seconds": 7, "call_started_at": "2026-07-06 12:10:47", "call_ended_at": "2026-07-06 12:11:15", "call_duration_seconds": 28, "call_state": "COMPLETED", "call_outcome": "PROMISE_TO_PAY", "recommended_action": "CALL", "notes": "0", "created_at": "2026-07-06 12:09:50", "created_by": "59f62411-98d8-4b79-b666-b5cc530941af", "updated_at": "2026-07-06 12:13:54", "updated_by": "59f62411-98d8-4b79-b666-b5cc530941af", "id2": "c5d8291e-aa46-4f6a-9949-a18c20881ee8", "name": "mohamed.abdelhalim", "email": "mohamed.abdelhalim@btech0.onmicrosoft.com", "phone_number": "201070333199", "area": "Upper Egypt", "iam_id": "59f62411-98d8-4b79-b666-b5cc530941af", "created_at3": "2026-06-17 11:06:48", "updated_at4": "2026-06-17 11:06:48", "national_id": 28804092300312}, {"id": "68d5ada1-2816-4b6e-ac2d-f4e671a4e1be", "consumer_id": "86dd429d-999c-435b-a5bf-715ed1e15e85", "consumer_phone_number": "201114161632", "agent_iam_id": "59f62411-98d8-4b79-b666-b5cc530941af", "ring_started_at": "2026-07-06 12:24:27", "ring_ended_at": "2026-07-06 12:24:43", "ring_duration_seconds": 15, "call_started_at": "2026-07-06 12:24:43", "call_ended_at": "2026-07-06 12:25:58", "call_duration_seconds": 75, "call_state": "COMPLETED", "call_outcome": "CONSUMER_COMPLAINT", "recommended_action": null, "notes": null, "created_at": "2026-07-06 12:20:24", "created_by": "59f62411-98d8-4b79-b666-b5cc530941af", "updated_at": "2026-07-06 12:27:12", "updated_by": "59f62411-98d8-4b79-b666-b5cc530941af", "id2": "c5d8291e-aa46-4f6a-9949-a18c20881ee8", "name": "mohamed.abdelhalim", "email": "mohamed.abdelhalim@btech0.onmicrosoft.com", "phone_number": "201070333199", "area": "Upper Egypt", "iam_id": "59f62411-98d8-4b79-b666-b5cc530941af", "created_at3": "2026-06-17 11:06:48", "updated_at4": "2026-06-17 11:06:48", "national_id": 28804092300312}, {"id": "1d6770d4-2bd3-4e93-bcf6-4690fbbe572a", "consumer_id": "beec7b2a-0cfd-4665-b7f5-83f68cee8782", "consumer_phone_number": "201032196262", "agent_iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "ring_started_at": "2026-07-06 12:28:36", "ring_ended_at": "2026-07-06 12:28:48", "ring_duration_seconds": 12, "call_started_at": "2026-07-06 12:28:48", "call_ended_at": "2026-07-06 12:30:00", "call_duration_seconds": 72, "call_state": "COMPLETED", "call_outcome": "WRONG_NUMBER", "recommended_action": "VISIT", "notes": null, "created_at": "2026-07-06 12:28:36", "created_by": "8370fecd-3593-4760-9f1b-df640712fdae", "updated_at": "2026-07-06 12:31:01", "updated_by": "8370fecd-3593-4760-9f1b-df640712fdae", "id2": "5431cf4a-ac83-48fc-aae7-5dc61f75a701", "name": "Hazem Khaled Fathy Sayed", "email": "hazem.khaled@btech.com", "phone_number": "201066232515", "area": "Upper Egypt", "iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "created_at3": "2026-06-12 11:48:13", "updated_at4": "2026-06-12 11:48:13", "national_id": 29403162403938}, {"id": "ad6797f5-db26-4034-b3af-c2a532a19b0e", "consumer_id": "0850aef7-c71b-49ca-8426-bebffe8313dd", "consumer_phone_number": "201224563489", "agent_iam_id": "088f58e8-3bf6-496b-8717-6e9a1cbe71e4", "ring_started_at": "2026-08-13 12:09:30", "ring_ended_at": "2026-08-13 12:09:42", "ring_duration_seconds": 12, "call_started_at": "2026-08-13 12:09:42", "call_ended_at": "2026-08-13 12:11:04", "call_duration_seconds": 83, "call_state": "COMPLETED", "call_outcome": "PROMISE_TO_PAY", "recommended_action": "VISIT", "notes": "العميل متعثر ويريد وتم اختاره بضرورة سداد واستجاب سيتم زيارته ", "created_at": "2026-08-13 12:09:31", "created_by": "088f58e8-3bf6-496b-8717-6e9a1cbe71e4", "updated_at": "2026-08-13 12:12:10", "updated_by": "088f58e8-3bf6-496b-8717-6e9a1cbe71e4", "id2": "04617558-e8db-44db-ad8a-d8db31b21825", "name": "mahmoud.reda", "email": "mahmoud.reda@btech0.onmicrosoft.com", "phone_number": "201080064008", "area": "Alexandria", "iam_id": "088f58e8-3bf6-496b-8717-6e9a1cbe71e4", "created_at3": "2026-06-17 13:03:23", "updated_at4": "2026-06-17 13:03:23", "national_id": 29702240200353}, {"id": "e39a6667-8e02-4368-afa0-abb8b2fa89d1", "consumer_id": "c0b42405-db9e-4cb7-8221-75f66fd29710", "consumer_phone_number": "201067625420", "agent_iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "ring_started_at": "2026-07-06 12:32:24", "ring_ended_at": "2026-07-06 12:32:53", "ring_duration_seconds": 29, "call_started_at": "2026-07-06 12:32:53", "call_ended_at": "2026-07-06 12:34:02", "call_duration_seconds": 69, "call_state": "COMPLETED", "call_outcome": "PROMISE_TO_PAY", "recommended_action": "POSTPONE_INTERACTION", "notes": null, "created_at": "2026-07-06 12:31:31", "created_by": "8370fecd-3593-4760-9f1b-df640712fdae", "updated_at": "2026-07-06 12:34:44", "updated_by": "8370fecd-3593-4760-9f1b-df640712fdae", "id2": "5431cf4a-ac83-48fc-aae7-5dc61f75a701", "name": "Hazem Khaled Fathy Sayed", "email": "hazem.khaled@btech.com", "phone_number": "201066232515", "area": "Upper Egypt", "iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "created_at3": "2026-06-12 11:48:13", "updated_at4": "2026-06-12 11:48:13", "national_id": 29403162403938}, {"id": "5ffe9ce4-f6f8-45ef-96b1-ed1f12121f7d", "consumer_id": "8a5ada0f-1ec8-4aa6-ac2d-0d9cd54bbfe5", "consumer_phone_number": "201061272599", "agent_iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "ring_started_at": "2026-07-06 12:39:04", "ring_ended_at": "2026-07-06 12:39:26", "ring_duration_seconds": 21, "call_started_at": "2026-07-06 12:39:26", "call_ended_at": "2026-07-06 12:40:17", "call_duration_seconds": 51, "call_state": "COMPLETED", "call_outcome": "NO_ANSWER", "recommended_action": "CALL", "notes": null, "created_at": "2026-07-06 12:38:30", "created_by": "8370fecd-3593-4760-9f1b-df640712fdae", "updated_at": "2026-07-06 12:40:19", "updated_by": "8370fecd-3593-4760-9f1b-df640712fdae", "id2": "5431cf4a-ac83-48fc-aae7-5dc61f75a701", "name": "Hazem Khaled Fathy Sayed", "email": "hazem.khaled@btech.com", "phone_number": "201066232515", "area": "Upper Egypt", "iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "created_at3": "2026-06-12 11:48:13", "updated_at4": "2026-06-12 11:48:13", "national_id": 29403162403938}, {"id": "62f75889-047a-4a12-9f46-03fb9e797610", "consumer_id": "435dc445-c1fa-49da-bcb4-6b7391c41bd7", "consumer_phone_number": "201554240930", "agent_iam_id": "59f62411-98d8-4b79-b666-b5cc530941af", "ring_started_at": "2026-07-06 12:37:18", "ring_ended_at": "2026-07-06 12:37:36", "ring_duration_seconds": 18, "call_started_at": "2026-07-06 12:37:36", "call_ended_at": "2026-07-06 12:38:26", "call_duration_seconds": 50, "call_state": "COMPLETED", "call_outcome": "PROMISE_TO_PAY", "recommended_action": "CALL", "notes": "العميل أبلغني بسداد شهر ٦ من محفظة فودافون كاش وسوف يقوم بسداد الشهر الحالى ", "created_at": "2026-07-06 12:36:24", "created_by": "59f62411-98d8-4b79-b666-b5cc530941af", "updated_at": "2026-07-06 12:41:13", "updated_by": "59f62411-98d8-4b79-b666-b5cc530941af", "id2": "c5d8291e-aa46-4f6a-9949-a18c20881ee8", "name": "mohamed.abdelhalim", "email": "mohamed.abdelhalim@btech0.onmicrosoft.com", "phone_number": "201070333199", "area": "Upper Egypt", "iam_id": "59f62411-98d8-4b79-b666-b5cc530941af", "created_at3": "2026-06-17 11:06:48", "updated_at4": "2026-06-17 11:06:48", "national_id": 28804092300312}, {"id": "7f7faac5-2e15-4a14-9643-12ceb782cad7", "consumer_id": "2453c362-c00f-43f0-addb-76802022286a", "consumer_phone_number": "201022469706", "agent_iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "ring_started_at": "2026-07-06 12:42:05", "ring_ended_at": "2026-07-06 12:42:19", "ring_duration_seconds": 14, "call_started_at": "2026-07-06 12:42:19", "call_ended_at": "2026-07-06 12:43:47", "call_duration_seconds": 88, "call_state": "COMPLETED", "call_outcome": "PROMISE_TO_PAY", "recommended_action": "CALL", "notes": null, "created_at": "2026-07-06 12:41:55", "created_by": "8370fecd-3593-4760-9f1b-df640712fdae", "updated_at": "2026-07-06 12:44:46", "updated_by": "8370fecd-3593-4760-9f1b-df640712fdae", "id2": "5431cf4a-ac83-48fc-aae7-5dc61f75a701", "name": "Hazem Khaled Fathy Sayed", "email": "hazem.khaled@btech.com", "phone_number": "201066232515", "area": "Upper Egypt", "iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "created_at3": "2026-06-12 11:48:13", "updated_at4": "2026-06-12 11:48:13", "national_id": 29403162403938}, {"id": "a4e0a703-4b5f-439d-85bb-a223806cd1fb", "consumer_id": "12690e20-478d-44b3-a16f-2c68a128a535", "consumer_phone_number": "201143172839", "agent_iam_id": "a89f43ec-be95-42bd-9735-69adac61269a", "ring_started_at": "2026-08-17 08:16:29", "ring_ended_at": "2026-08-17 08:16:51", "ring_duration_seconds": 22, "call_started_at": "2026-08-17 08:16:51", "call_ended_at": "2026-08-17 08:18:03", "call_duration_seconds": 73, "call_state": "COMPLETED", "call_outcome": "PROMISE_TO_PAY", "recommended_action": "CALL", "notes": null, "created_at": "2026-08-17 08:16:29", "created_by": "a89f43ec-be95-42bd-9735-69adac61269a", "updated_at": "2026-08-17 08:18:08", "updated_by": "a89f43ec-be95-42bd-9735-69adac61269a", "id2": "7096fd64-442f-448d-aa66-6dc912299de0", "name": "merfat.ezzedin", "email": "merfat.ezzeldin@myloapp.com", "phone_number": "201062207715", "area": "Cairo", "iam_id": "a89f43ec-be95-42bd-9735-69adac61269a", "created_at3": "2026-07-07 10:08:36", "updated_at4": "2026-07-07 10:08:36", "national_id": 29708092200886}, {"id": "9d819134-a352-472e-8883-ea629b0817cb", "consumer_id": "8703175b-a3db-4d92-92fb-1ea4da4b87b0", "consumer_phone_number": "201063023315", "agent_iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "ring_started_at": "2026-07-06 12:46:01", "ring_ended_at": "2026-07-06 12:46:44", "ring_duration_seconds": 43, "call_started_at": "2026-07-06 12:46:44", "call_ended_at": "2026-07-06 12:48:43", "call_duration_seconds": 119, "call_state": "COMPLETED", "call_outcome": "PROMISE_TO_PAY", "recommended_action": "CALL", "notes": null, "created_at": "2026-07-06 12:46:01", "created_by": "8370fecd-3593-4760-9f1b-df640712fdae", "updated_at": "2026-07-06 12:49:22", "updated_by": "8370fecd-3593-4760-9f1b-df640712fdae", "id2": "5431cf4a-ac83-48fc-aae7-5dc61f75a701", "name": "Hazem Khaled Fathy Sayed", "email": "hazem.khaled@btech.com", "phone_number": "201066232515", "area": "Upper Egypt", "iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "created_at3": "2026-06-12 11:48:13", "updated_at4": "2026-06-12 11:48:13", "national_id": 29403162403938}, {"id": "85849731-41ec-4e63-8e2c-f711dc55773c", "consumer_id": "1df3a561-2f0e-41b9-9b11-2b25c1d20510", "consumer_phone_number": "201003628979", "agent_iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "ring_started_at": "2026-07-06 12:50:53", "ring_ended_at": "2026-07-06 12:51:06", "ring_duration_seconds": 13, "call_started_at": "2026-07-06 12:51:06", "call_ended_at": "2026-07-06 12:52:23", "call_duration_seconds": 77, "call_state": "COMPLETED", "call_outcome": "PROMISE_TO_PAY", "recommended_action": "CALL", "notes": null, "created_at": "2026-07-06 12:50:53", "created_by": "8370fecd-3593-4760-9f1b-df640712fdae", "updated_at": "2026-07-06 12:52:59", "updated_by": "8370fecd-3593-4760-9f1b-df640712fdae", "id2": "5431cf4a-ac83-48fc-aae7-5dc61f75a701", "name": "Hazem Khaled Fathy Sayed", "email": "hazem.khaled@btech.com", "phone_number": "201066232515", "area": "Upper Egypt", "iam_id": "8370fecd-3593-4760-9f1b-df640712fdae", "created_at3": "2026-06-12 11:48:13", "updated_at4": "2026-06-12 11:48:13", "national_id": 29403162403938}, {"id": "8142f115-3032-465a-b396-ecacbc6f03ca", "consumer_id": "5d672953-fd96-4fd7-bcd1-a7b6064f59e4", "consumer_phone_number": "201098223185", "agent_iam_id": "1e06b56e-d92b-4c5c-ba33-18e0407f24e3", "ring_started_at": "2026-07-06 13:36:38", "ring_ended_at": "2026-07-06 13:37:07", "ring_duration_seconds": 29, "call_started_at": "2026-07-06 13:37:07", "call_ended_at": "2026-07-06 13:39:44", "call_duration_seconds": 156, "call_state": "COMPLETED", "call_outcome": "CONSUMER_COMPLAINT", "recommended_action": null, "notes": null, "created_at": "2026-07-06 13:28:08", "created_by": "1e06b56e-d92b-4c5c-ba33-18e0407f24e3", "updated_at": "2026-07-06 13:39:49", "updated_by": "1e06b56e-d92b-4c5c-ba33-18e0407f24e3", "id2": "3971f0c5-1501-4c22-beae-d46feadfd4ed", "name": "Salama Mosleh Salama Sayed AbdAlGhani", "email": "salama.abdelghany@btech.com", "phone_number": "201094781804", "area": "Delta", "iam_id": "1e06b56e-d92b-4c5c-ba33-18e0407f24e3", "created_at3": "2026-06-10 11:51:13", "updated_at4": "2026-06-11 09:37:42", "national_id": 29310071700338}];
+window.EMBEDDED_VISITS = [{"id": "bf014447-5cdf-4519-9e0b-a38ea4f46818", "consumer_id": "401d6742-3e5c-4bbb-bcd8-59df3ed68a2d", "agent_iam_id": "e4eed723-d582-4148-902c-4e7e87a81c76", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "IN_APP_RESCHEDULING", "notes": "تمت مقابله العميل شخصيا و لديه اسفل المنزل محل لادوات النظام و الكاميرات و تم الاتفاق علي السداد و عمل جدوله ", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 12:14:52", "created_at": "2026-08-26 12:05:00", "updated_at": "2026-08-26 12:14:52", "submission_date": "2026-08-26 12:14:52", "id2": "d35ce81f-0411-4d29-94b5-7a0e17193c74", "name": "Ahmed Mamdouh AlMetwaly", "email": "a.almutawali@btech.com", "phone_number": "201011496362", "area": "Delta", "iam_id": "e4eed723-d582-4148-902c-4e7e87a81c76", "created_at3": "2026-06-10 11:25:08", "updated_at4": "2026-06-10 11:25:08", "national_id": 29310061100499}, {"id": "55759f55-4f85-4aa0-a517-89224b377258", "consumer_id": "ada5bade-38aa-4344-86e4-96e91ef96ec1", "agent_iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم الذهاب الي مقر سكن العميل بن عم العميل وتم ترك انذار وعملت منه ان العميل متعثر نظرا لمرض والده واخبرني انه سيقوم بالسداد قبل نهايه الشهر", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 11:16:34", "created_at": "2026-08-26 11:13:19", "updated_at": "2026-08-26 11:16:34", "submission_date": "2026-08-26 11:16:34", "id2": "c1206957-7bce-4267-bff3-854dd59b177b", "name": "ibrahim.elshazly", "email": "ibrahim.elshazly@btech0.onmicrosoft.com", "phone_number": "201022291058", "area": "Delta", "iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "created_at3": "2026-06-17 18:52:08", "updated_at4": "2026-06-17 18:52:08", "national_id": 29108011706732}, {"id": "d40545c8-35c5-454b-96f3-805836506d35", "consumer_id": "6e978a0f-be2b-4d51-87a2-c55efd8a4c8b", "agent_iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم مقابله اخو العميل واخبرني باتخاذ الاجراءات القانوينه وعدم الحضور للمنزل مره اخري واخبرني بان اخو عليه ديون كثيره ولا يستطيع السداد وابلغته بسهول سداد قسط وتم عرض عليه طلب اعاده الجدواله بشرط التزام السداد فيما بعد رفض واخبرني باتخاذ الاجراءات القانونيه", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 11:41:54", "created_at": "2026-08-26 11:38:53", "updated_at": "2026-08-26 11:41:54", "submission_date": "2026-08-26 11:41:54", "id2": "c1206957-7bce-4267-bff3-854dd59b177b", "name": "ibrahim.elshazly", "email": "ibrahim.elshazly@btech0.onmicrosoft.com", "phone_number": "201022291058", "area": "Delta", "iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "created_at3": "2026-06-17 18:52:08", "updated_at4": "2026-06-17 18:52:08", "national_id": 29108011706732}, {"id": "892e3e1b-8df9-4baf-ab18-c3fd2774d7a4", "consumer_id": "41a7a1f2-3458-43d2-a497-4c572ca2ace6", "agent_iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم مقابله اخت العميله وتم ترك انذار واخبرتين ان والدها من يقوم بالسداد وانهم متعثرين ماديا لقله الدخل وكثره الالتزامات وتوعدت بالسداد قبل نهايه الشهر الحالي", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 11:54:24", "created_at": "2026-08-26 11:51:52", "updated_at": "2026-08-26 11:54:24", "submission_date": "2026-08-26 11:54:24", "id2": "c1206957-7bce-4267-bff3-854dd59b177b", "name": "ibrahim.elshazly", "email": "ibrahim.elshazly@btech0.onmicrosoft.com", "phone_number": "201022291058", "area": "Delta", "iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "created_at3": "2026-06-17 18:52:08", "updated_at4": "2026-06-17 18:52:08", "national_id": 29108011706732}, {"id": "864ec095-f478-46f6-a35b-c4ac18474704", "consumer_id": "4a9e1654-f991-4820-b322-1171a686e550", "agent_iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم مقابله زوجه اخو زوج العميله وتم ترك انذار واخبرتني انه ستقوم بابلاغها بالسداد قبل نهاه الشهر الحالي", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 11:23:23", "created_at": "2026-08-26 11:16:59", "updated_at": "2026-08-26 11:23:23", "submission_date": "2026-08-26 11:23:23", "id2": "c1206957-7bce-4267-bff3-854dd59b177b", "name": "ibrahim.elshazly", "email": "ibrahim.elshazly@btech0.onmicrosoft.com", "phone_number": "201022291058", "area": "Delta", "iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "created_at3": "2026-06-17 18:52:08", "updated_at4": "2026-06-17 18:52:08", "national_id": 29108011706732}, {"id": "41907adf-5826-465e-bbc0-393b0988f6f8", "consumer_id": "5986d625-b09b-4bb3-a355-a95fdfda46c5", "agent_iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم مقابله اخو العميل وتم ترك انذار واخبرني انه سيقوم بالسداد قبل نهايه الشهر الحالي وللعلم عملت من الجيران ان العميل سيئ التعاملات الماديه وعليه ديون كثيره", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 11:51:23", "created_at": "2026-08-26 11:49:04", "updated_at": "2026-08-26 11:51:23", "submission_date": "2026-08-26 11:51:23", "id2": "c1206957-7bce-4267-bff3-854dd59b177b", "name": "ibrahim.elshazly", "email": "ibrahim.elshazly@btech0.onmicrosoft.com", "phone_number": "201022291058", "area": "Delta", "iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "created_at3": "2026-06-17 18:52:08", "updated_at4": "2026-06-17 18:52:08", "national_id": 29108011706732}, {"id": "217da5af-d48f-47d2-a810-d8c44111a088", "consumer_id": "a3cf5b14-3eb1-48d5-a32e-f3f676615098", "agent_iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم الذاهاب الي مقر سكن العميل وتم ترك انذار وتبين عدم وجود احد اثناء الزياره وعلمت من الجيران ان العميل سيء التعاملات الماديه وعليه ديون كثيره لاكثر من جهه تمويليه", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 11:26:12", "created_at": "2026-08-26 11:23:45", "updated_at": "2026-08-26 11:26:12", "submission_date": "2026-08-26 11:26:12", "id2": "c1206957-7bce-4267-bff3-854dd59b177b", "name": "ibrahim.elshazly", "email": "ibrahim.elshazly@btech0.onmicrosoft.com", "phone_number": "201022291058", "area": "Delta", "iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "created_at3": "2026-06-17 18:52:08", "updated_at4": "2026-06-17 18:52:08", "national_id": 29108011706732}, {"id": "d005755d-658b-496c-a265-934749122b77", "consumer_id": "d01a22f4-e0b0-4bf4-915b-121beadccd9f", "agent_iam_id": "afc68663-339e-4a18-850e-b855a5ac0c30", "visit_state": "COMPLETED", "visit_output": "REFUSED_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "LEGAL_ACTION", "notes": "واعد بالسداد ", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-03-03 20:39:39", "created_at": "2026-03-03 10:45:22", "updated_at": "2026-08-26 11:10:38", "submission_date": "2026-03-03 20:39:40", "id2": "b963eb1c-2c47-46f1-a6da-c6404783975f", "name": "Mohamed Abd ElRahman", "email": "mohammed.abdelrahman@btech.com", "phone_number": "201001223364", "area": "Cairo", "iam_id": "afc68663-339e-4a18-850e-b855a5ac0c30", "created_at3": "2026-03-03 10:28:36", "updated_at4": "2026-03-03 10:28:36", "national_id": 28212252103999}, {"id": "6fcbba9a-5de3-415e-89c6-fd1a93a361fd", "consumer_id": "a62d5f9a-7c09-4864-8f8a-9239fe985753", "agent_iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم الذهاب الي مقر سكن العميل وتبين عدم وجود احد اثناء الزياره وتم ترك انذار وتم الاتصال بالعميل اكثر من مره لا يرد وعملت من الجيران ان العميل عليه ديون كثيره وقام بالنصب علي اكثر من شخص في المنطقه يقةم باخذ الامول ولا يقوم باسترادها مره اخري", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 11:45:27", "created_at": "2026-08-26 11:42:33", "updated_at": "2026-08-26 11:45:27", "submission_date": "2026-08-26 11:45:27", "id2": "c1206957-7bce-4267-bff3-854dd59b177b", "name": "ibrahim.elshazly", "email": "ibrahim.elshazly@btech0.onmicrosoft.com", "phone_number": "201022291058", "area": "Delta", "iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "created_at3": "2026-06-17 18:52:08", "updated_at4": "2026-06-17 18:52:08", "national_id": 29108011706732}, {"id": "a012a2f7-dbb0-4531-871e-0a966b5aba83", "consumer_id": "e7702ff3-5436-484c-9fd5-e96e63235047", "agent_iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم مقابله اخو العميل وتم ترك انذار واخبرني بانه اخو العميل خارج مصر وانه سيقوم بسداد الاقساط", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 11:30:33", "created_at": "2026-08-26 11:28:07", "updated_at": "2026-08-26 11:30:33", "submission_date": "2026-08-26 11:30:33", "id2": "c1206957-7bce-4267-bff3-854dd59b177b", "name": "ibrahim.elshazly", "email": "ibrahim.elshazly@btech0.onmicrosoft.com", "phone_number": "201022291058", "area": "Delta", "iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "created_at3": "2026-06-17 18:52:08", "updated_at4": "2026-06-17 18:52:08", "national_id": 29108011706732}, {"id": "40f3247e-4c01-46e9-b562-228e55fb5c69", "consumer_id": "735389bc-7424-4991-90b4-9d5f67950efc", "agent_iam_id": "e4eed723-d582-4148-902c-4e7e87a81c76", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "IN_APP_RESCHEDULING", "notes": "تمت زياره العميل بالمنزل و تم مقابلته شخصيا و معه الزوجه و قال انه غير قادر علي السداد و انه يريد جدوله الاقساط و افاد ان الجدوله متواجده علي البرنامج و هيتم سداد اول قسط خلال ٥ ايام ", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 12:16:36", "created_at": "2026-08-26 11:44:08", "updated_at": "2026-08-26 12:16:36", "submission_date": "2026-08-26 12:16:36", "id2": "d35ce81f-0411-4d29-94b5-7a0e17193c74", "name": "Ahmed Mamdouh AlMetwaly", "email": "a.almutawali@btech.com", "phone_number": "201011496362", "area": "Delta", "iam_id": "e4eed723-d582-4148-902c-4e7e87a81c76", "created_at3": "2026-06-10 11:25:08", "updated_at4": "2026-06-10 11:25:08", "national_id": 29310061100499}, {"id": "7f26db3c-be70-43e0-8b1a-69af19eccbff", "consumer_id": "b3b7e5c9-8e87-4cbe-a921-8361a4186df4", "agent_iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم مقابله بن اخو  العميل وتم ترك انذار واخبرني انه سيبلغه بالسداد قبل نهايه الشهر الحالي ", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 11:48:32", "created_at": "2026-08-26 11:46:30", "updated_at": "2026-08-26 11:48:32", "submission_date": "2026-08-26 11:48:32", "id2": "c1206957-7bce-4267-bff3-854dd59b177b", "name": "ibrahim.elshazly", "email": "ibrahim.elshazly@btech0.onmicrosoft.com", "phone_number": "201022291058", "area": "Delta", "iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "created_at3": "2026-06-17 18:52:08", "updated_at4": "2026-06-17 18:52:08", "national_id": 29108011706732}, {"id": "098e718f-11bd-4254-a700-4645002d8473", "consumer_id": "cf08fca0-8329-43cb-8520-7be6b83331f3", "agent_iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم الذهاب الي مقر سكن العميل وتم ترك انذار وتبين عدم وجود احدااثناء الزياره وعلمت من الجيران ان العيمل سيئ التعاملات الماديه وعليه ديون كثيره ةوتم الاتصال بالعميل اكثر من مره مغلق", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 11:33:42", "created_at": "2026-08-26 11:31:08", "updated_at": "2026-08-26 11:33:42", "submission_date": "2026-08-26 11:33:42", "id2": "c1206957-7bce-4267-bff3-854dd59b177b", "name": "ibrahim.elshazly", "email": "ibrahim.elshazly@btech0.onmicrosoft.com", "phone_number": "201022291058", "area": "Delta", "iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "created_at3": "2026-06-17 18:52:08", "updated_at4": "2026-06-17 18:52:08", "national_id": 29108011706732}, {"id": "8f09b00d-adff-4882-8f30-6252c00f5ca9", "consumer_id": "34a3b4a5-008d-4026-8cf9-3571f1a6c7e4", "agent_iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم الذهاب الي مقر سكن العميل وتم مقابله زوجه اخو زوج العميله واخبرتين بانتخاذ الاجراءات القانونيه لانها لا تقوم بالسداد وانهم قامو بالسداد ديون كثيره عليها من قبل وانها لا تتعظ وان اخذت مبلغ مالي ولا تقوم باخذ منتجات ", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-26 11:38:22", "created_at": "2026-08-26 11:34:15", "updated_at": "2026-08-26 11:38:22", "submission_date": "2026-08-26 11:38:22", "id2": "c1206957-7bce-4267-bff3-854dd59b177b", "name": "ibrahim.elshazly", "email": "ibrahim.elshazly@btech0.onmicrosoft.com", "phone_number": "201022291058", "area": "Delta", "iam_id": "22a33f36-0c16-4811-801c-48fded69bee5", "created_at3": "2026-06-17 18:52:08", "updated_at4": "2026-06-17 18:52:08", "national_id": 29108011706732}, {"id": "12ab1c8d-c551-4822-a0b3-61b74eaef080", "consumer_id": "68923482-d8ce-4562-b010-74ef1c9087fa", "agent_iam_id": "7bf8b001-9da7-4865-8e02-e6e9d4aad6dc", "visit_state": "COMPLETED", "visit_output": "PROMISE_TO_PAY", "is_appropriate_limit": false, "consumer_status": "UNABLE_TO_PAY", "recommended_action": "RESET_CREDIT_LIMIT", "notes": "تم زياره العميل ومقابلة اخوه وافاد أنه غير موجود ومسافر الغردقه وتم تسليم الإنذار له وإبلاغه بضرورة إبلاغه بالسداد ووعدت بجعله يسدد ", "photos": "{photos: []}", "building_photos": "{photos: []}", "notes_date": "2026-08-27 19:26:41", "created_at": "2026-08-27 19:22:40", "updated_at": "2026-08-27 19:26:41", "submission_date": "2026-08-27 19:26:41", "id2": "1b6b7e3e-55ca-40cd-9386-259ae8c24d60", "name": "Abelrahman Mohamed Saeed Mohamed", "email": "abdelrahman.said@btech.com", "phone_number": "201010007223", "area": "Upper Egypt", "iam_id": "7bf8b001-9da7-4865-8e02-e6e9d4aad6dc", "created_at3": "2026-06-10 11:57:32", "updated_at4": "2026-06-10 11:57:32", "national_id": 29012022704017}];
+window.EMBEDDED_GROUPS = {"g1": {"id": "g1", "title": "مجموعة 1 - مخاطر مرتفعة / إجراء قانوني", "color": "#ef4444", "icon": "⚠️", "risk": "عالي جداً", "desc": "رفض صريح، سمعة سيئة، ديون متعددة، أو طلب عدم العودة للمنزل", "items": [{"id": "6e978a0f…", "full_id": "6e978a0f-be2b-4d51-87a2-c55efd8a4c8b", "area": "Delta", "agent": "ibrahim.elshazly", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تم مقابله اخو العميل واخبرني باتخاذ الاجراءات القانوينه وعدم الحضور للمنزل مره اخري واخبرني بان اخو عليه ديون كثيره ولا يستطيع السداد وابلغته بسهول سداد قسط وتم عرض عليه طلب اعاده الجدواله بشرط التزام السداد فيما بعد رفض واخبرني باتخاذ الاجراءات القانونيه"}, {"id": "5986d625…", "full_id": "5986d625-b09b-4bb3-a355-a95fdfda46c5", "area": "Delta", "agent": "ibrahim.elshazly", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تم مقابله اخو العميل وتم ترك انذار واخبرني انه سيقوم بالسداد قبل نهايه الشهر الحالي وللعلم عملت من الجيران ان العميل سيئ التعاملات الماديه وعليه ديون كثيره"}, {"id": "d01a22f4…", "full_id": "d01a22f4-e0b0-4bf4-915b-121beadccd9f", "area": "Cairo", "agent": "Mohamed Abd ElRahman", "action": "LEGAL_ACTION", "output": "REFUSED_TO_PAY", "date": "2026-03-03", "notes": "واعد بالسداد"}, {"id": "a62d5f9a…", "full_id": "a62d5f9a-7c09-4864-8f8a-9239fe985753", "area": "Delta", "agent": "ibrahim.elshazly", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تم الذهاب الي مقر سكن العميل وتبين عدم وجود احد اثناء الزياره وتم ترك انذار وتم الاتصال بالعميل اكثر من مره لا يرد وعملت من الجيران ان العميل عليه ديون كثيره وقام بالنصب علي اكثر من شخص في المنطقه يقةم باخذ الامول ولا يقوم باسترادها مره اخري"}, {"id": "34a3b4a5…", "full_id": "34a3b4a5-008d-4026-8cf9-3571f1a6c7e4", "area": "Delta", "agent": "ibrahim.elshazly", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تم الذهاب الي مقر سكن العميل وتم مقابله زوجه اخو زوج العميله واخبرتين بانتخاذ الاجراءات القانونيه لانها لا تقوم بالسداد وانهم قامو بالسداد ديون كثيره عليها من قبل وانها لا تتعظ وان اخذت مبلغ مالي ولا تقوم باخذ منتجات"}], "manager_actions": ["إيقاف المسار الودي فوراً وتعيين LEGAL_ACTION في النظام", "مراجعة ملف كل عميل خلال 24 ساعة واعتماد التصعيد من المدير", "منع الزيارات الميدانية بدون سند إنذار رسمي مكتوب", "تجهيز حزمة مستندات: إنذارات + محاولات اتصال + ملخص زيارات", "قطع نهائي: تذكير مسجّل قبل الموعد بـ 48 ساعة ثم تحويل للقانون"], "scripts": {"opening": "أستاذ/ة [الاسم]، معاك [اسمك] من إدارة التحصيل في [الشركة]. بكل احترام بكلم حضرتك بخصوص المستحقات المتأخرة على الحساب، وعايزين نلاقي حل واضح اليوم قبل ما الملف يتحول لمسار رسمي.", "pressure": "احنا وثقنا أكتر من محاولة تواصل وزيارة، وللأسف مفيش التزام بالوعود السابقة. لو مفيش اتفاق سداد أو جدولة ملزمة النهاردة، هنضطر نكمّل بالإجراءات القانونية المقررة لحماية حقوق الشركة.", "close_soft": "لو قدرت تسدد جزء اليوم أو تعتمد جدولة مكتوبة بأول قسط في تاريخ محدد، نقدر نوقف التصعيد مؤقتاً. قولّي إيه المتاح دلوقتي؟", "close_hard": "هسيب لحضرتك 24 ساعة كفرصة أخيرة للسداد أو التواصل مع الإدارة. بعد كده الملف هيتسلم للقسم القانوني بدون استثناء.", "dont_say": ["متهددش بالحبس مباشرة", "متتناقشش مع الأقارب بدل المدين في القرار النهائي", "متعتمدش وعد شفهي من غير تاريخ ومبلغ"]}}, "g2": {"id": "g2", "title": "مجموعة 2 - وعود من الأقارب فقط", "color": "#f59e0b", "icon": "👥", "risk": "متوسط مرتفع", "desc": "مقابلة أخ/أخت/قريب والعميل غير موجود - الوعد غير ملزم حتى تأكيد المدين", "items": [{"id": "41a7a1f2…", "full_id": "41a7a1f2-3458-43d2-a497-4c572ca2ace6", "area": "Delta", "agent": "ibrahim.elshazly", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تم مقابله اخت العميله وتم ترك انذار واخبرتين ان والدها من يقوم بالسداد وانهم متعثرين ماديا لقله الدخل وكثره الالتزامات وتوعدت بالسداد قبل نهايه الشهر الحالي"}, {"id": "4a9e1654…", "full_id": "4a9e1654-f991-4820-b322-1171a686e550", "area": "Delta", "agent": "ibrahim.elshazly", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تم مقابله زوجه اخو زوج العميله وتم ترك انذار واخبرتني انه ستقوم بابلاغها بالسداد قبل نهاه الشهر الحالي"}, {"id": "e7702ff3…", "full_id": "e7702ff3-5436-484c-9fd5-e96e63235047", "area": "Delta", "agent": "ibrahim.elshazly", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تم مقابله اخو العميل وتم ترك انذار واخبرني بانه اخو العميل خارج مصر وانه سيقوم بسداد الاقساط"}, {"id": "b3b7e5c9…", "full_id": "b3b7e5c9-8e87-4cbe-a921-8361a4186df4", "area": "Delta", "agent": "ibrahim.elshazly", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تم مقابله بن اخو  العميل وتم ترك انذار واخبرني انه سيبلغه بالسداد قبل نهايه الشهر الحالي"}, {"id": "68923482…", "full_id": "68923482-d8ce-4562-b010-74ef1c9087fa", "area": "Upper Egypt", "agent": "Abelrahman Mohamed Saeed Mohamed", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-27", "notes": "تم زياره العميل ومقابلة اخوه وافاد أنه غير موجود ومسافر الغردقه وتم تسليم الإنذار له وإبلاغه بضرورة إبلاغه بالسداد ووعدت بجعله يسدد"}], "manager_actions": ["لا تُقفل الحالة على PROMISE_TO_PAY بناءً على كلام قريب فقط", "كل وعد يتحول لتاريخ استحقاق محدد + رقم تواصل المدين", "متابعة قبل الموعد بـ 48 ساعة (اتصال + رسالة نصية)", "بعد أول تخلف: نقل العميل لمجموعة المخاطر العالية", "تدريب الوكلاء على طلب «رقم العميل» و«موعد وجوده» في كل زيارة"], "scripts": {"opening": "السلام عليكم، معاك [اسمك] من [الشركة]. أنا عند عنوان السيد/ة [اسم العميل] بخصوص مستحقات متأخرة. ممكن أتحدث مع حضرتك أو مع صاحب الحساب؟", "with_relative": "شكراً لتعاونك. عشان نحفظ حقوق الطرفين، محتاجين رقم مباشر للعميل أو معاد يكون موجود فيه خلال 48 ساعة. أي وعد بالسداد لازم يتأكد منه صاحب الحساب نفسه.", "confirm_promise": "تمام، سجّلنا إن السداد هيتم يوم [التاريخ] بمبلغ [المبلغ]. هنتواصل مع العميل للتأكيد. لو تأخر عن الموعد، هنضطر نرفع مستوى المتابعة.", "close": "هبعت رسالة تأكيد بالموعد. لو العميل قدر يتواصل معانا النهاردة على [رقم الشركة] هيساعدنا نتجنّب أي تصعيد.", "dont_say": ["متقبلش «هيسدد نهاية الشهر» من غير يوم محدد", "متسيبش إنذار من غير ما تسجّل مين استلمه", "متوعدش بإيقاف الإجراءات وأنت مش مفوض"]}}, "g3": {"id": "g3", "title": "مجموعة 3 - حالات ناعمة / جدولة", "color": "#10b981", "icon": "✅", "risk": "منخفض–متوسط", "desc": "مقابلة العميل أو ظرف واضح - فرصة تسوية ودية وتحصيل سريع", "items": [{"id": "401d6742…", "full_id": "401d6742-3e5c-4bbb-bcd8-59df3ed68a2d", "area": "Delta", "agent": "Ahmed Mamdouh AlMetwaly", "action": "IN_APP_RESCHEDULING", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تمت مقابله العميل شخصيا و لديه اسفل المنزل محل لادوات النظام و الكاميرات و تم الاتفاق علي السداد و عمل جدوله"}, {"id": "735389bc…", "full_id": "735389bc-7424-4991-90b4-9d5f67950efc", "area": "Delta", "agent": "Ahmed Mamdouh AlMetwaly", "action": "IN_APP_RESCHEDULING", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تمت زياره العميل بالمنزل و تم مقابلته شخصيا و معه الزوجه و قال انه غير قادر علي السداد و انه يريد جدوله الاقساط و افاد ان الجدوله متواجده علي البرنامج و هيتم سداد اول قسط خلال ٥ ايام"}, {"id": "201027242270", "full_id": "a228ad97-0cc1-4519-a7a5-52d1d2c0dfed", "area": "Delta", "agent": "Salama Mosleh Salama Sayed AbdAlGhani", "action": "IN_APP_RESCHEDULING", "output": "UNABLE_TO_PAY", "date": "2026-07-06", "notes": "العميل عربيته عامله حادثه وعايز يعمل جدوله لعدم قدرته على السداد"}, {"id": "201010012643", "full_id": "f9fe9e2d-aadb-498b-93ae-ae90dd8f163a", "area": "Alexandria", "agent": "Mohamed Tayseer Abbas Ali", "action": "-", "output": "UNABLE_TO_PAY", "date": "2026-08-13", "notes": "العميل يريد جدولة الاقساط عن طريق التطبيق"}], "manager_actions": ["أولوية قصوى: تفعيل الجدولة في التطبيق خلال نفس اليوم", "متابعة أول قسط بتاريخ واضح (تذكير منتصف المدة + يوم الاستحقاق)", "الحفاظ على نبرة مهنية؛ لا تهديد قانوني مبكر", "العميل صاحب نشاط تجاري = قناة تحصيل مفضلة", "عند الالتزام: إغلاق المتابعة الميدانية والتحول لمتابعة أقساط عادية"], "scripts": {"opening": "أستاذ/ة [الاسم]، معاك [اسمك] من [الشركة]. اتصلت/زرت عشان نرتّب سداد المستحقات بطريقة تناسب ظروفك وتحفظ انتظام الحساب.", "empathy": "فاهم إن في ضغط أو ظرف [حادثة/تأخر دخل]. هدفنا مش التعقيد، هدفنا خطة واضحة تقدر تلتزم بيها.", "offer": "نقدر نعمل جدولة من التطبيق: أول قسط يوم [تاريخ] بمبلغ [X]، وباقي الأقساط حسب الاتفاق. أول ما يتسدد أول قسط، المتابعة الميدانية بتتوقف.", "close": "موافق نمشي على الخطة دي؟ هفعّل الجدولة دلوقتي وأبعتلك تأكيد. لو احتجت مساعدة على التطبيق أنا معاك خطوة بخطوة.", "dont_say": ["متفتحش باب خصم من غير صلاحية", "متطولش التفاوض أكتر من اللازم لو وافق", "متنساش توثيق الموافقة في النظام فوراً"]}}, "g4": {"id": "g4", "title": "مجموعة 4 - غائب / إنذار فقط", "color": "#8b5cf6", "icon": "🏠", "risk": "متوسط", "desc": "البيت فاضي، إنذار متروك، معلومات من الجيران، هاتف مغلق", "items": [{"id": "ada5bade…", "full_id": "ada5bade-38aa-4344-86e4-96e91ef96ec1", "area": "Delta", "agent": "ibrahim.elshazly", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تم الذهاب الي مقر سكن العميل بن عم العميل وتم ترك انذار وعملت منه ان العميل متعثر نظرا لمرض والده واخبرني انه سيقوم بالسداد قبل نهايه الشهر"}, {"id": "a3cf5b14…", "full_id": "a3cf5b14-3eb1-48d5-a32e-f3f676615098", "area": "Delta", "agent": "ibrahim.elshazly", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تم الذاهاب الي مقر سكن العميل وتم ترك انذار وتبين عدم وجود احد اثناء الزياره وعلمت من الجيران ان العميل سيء التعاملات الماديه وعليه ديون كثيره لاكثر من جهه تمويليه"}, {"id": "cf08fca0…", "full_id": "cf08fca0-8329-43cb-8520-7be6b83331f3", "area": "Delta", "agent": "ibrahim.elshazly", "action": "RESET_CREDIT_LIMIT", "output": "PROMISE_TO_PAY", "date": "2026-08-26", "notes": "تم الذهاب الي مقر سكن العميل وتم ترك انذار وتبين عدم وجود احدااثناء الزياره وعلمت من الجيران ان العيمل سيئ التعاملات الماديه وعليه ديون كثيره ةوتم الاتصال بالعميل اكثر من مره مغلق"}], "manager_actions": ["التحقق من صحة العنوان من العقد/البطاقة قبل زيارة ثالثة", "ثلاث محاولات منظمة: زيارة + كل الأرقام + زيارة في معاد مختلف", "البحث عن عنوان عمل أو أرقام بديلة من ملف التمويل", "بعد فشل المحاولات المنظمة: تصعيد إداري ثم قانوني", "منع إغلاق الزيارة على PROMISE_TO_PAY إذا لم يوجد من يَعِد أصلاً"], "scripts": {"opening": "السلام عليكم، معاك [اسمك] من [الشركة]، دور على السيد/ة [الاسم] بخصوص موضوع رسمي متعلق بالحساب.", "with_neighbor": "شكراً. لو تعرف مواعيد تواجده أو رقم تاني للتواصل هتساعدنا. هسيب إنذار مكتوب على العنوان المسجّل.", "message_text": "أستاذ/ة [الاسم]، تم ترك إنذار على عنوانكم بتاريخ [تاريخ] بخصوص مستحقات متأخرة. برجاء التواصل خلال 48 ساعة على [رقم] لتجنب تصعيد المتابعة.", "close": "هسجّل المحاولة. لو مفيش رد خلال يومين، هنراجع العنوان والأرقام البديلة ونحدد الخطوة التالية من الإدارة.", "dont_say": ["متبنِيش قرار قانوني على كلام الجيران لوحده", "متسيبش إنذار من غير تصوير/تسجيل وقت", "متكرر الزيارة يومياً على نفس العنوان الفاضي"]}}, "g5": {"id": "g5", "title": "مجموعة 5 - مكملات المكالمات", "color": "#06b6d4", "icon": "📞", "risk": "حسب الحالة", "desc": "حالات ظهرت في المكالمات وتحتاج ربط فوري مع المتابعة أو التحقق من السداد", "items": [{"id": "201224563489", "full_id": "0850aef7-c71b-49ca-8426-bebffe8313dd", "area": "Alexandria", "agent": "mahmoud.reda", "action": "VISIT", "output": "PROMISE_TO_PAY", "date": "2026-08-13", "notes": "العميل متعثر ويريد وتم اختاره بضرورة سداد واستجاب سيتم زيارته"}, {"id": "201554240930", "full_id": "435dc445-c1fa-49da-bcb4-6b7391c41bd7", "area": "Upper Egypt", "agent": "mohamed.abdelhalim", "action": "CALL", "output": "PROMISE_TO_PAY", "date": "2026-07-06", "notes": "العميل أبلغني بسداد شهر ٦ من محفظة فودافون كاش وسوف يقوم بسداد الشهر الحالى"}], "manager_actions": ["التحقق من حركات السداد الموعودة خلال 48 ساعة", "التأكد من تنفيذ الزيارات المتفق عليها خلال 3–5 أيام", "تنفيذ طلبات الجدولة من المكالمة في نفس اليوم", "ربط كل مكالمة بـ consumer_id وخطة واضحة في النظام"], "scripts": {"opening": "أستاذ/ة [الاسم]، معاك [اسمك] من [الشركة] متابعة للمكالمة السابقة بخصوص [السداد/الجدولة/الزيارة].", "verify_pay": "حضرتك ذكرت سداد عن طريق [محفظة/وسيلة]. ممكن تأكد المبلغ والتوقيت عشان نطابق الحركة عندنا ونقفل المتابعة؟", "schedule_visit": "اتفقنا على زيارة. هنكون عند العنوان يوم [تاريخ] تقريباً الساعة [وقت]. لو في تغيير في الموعد ابعتلنا مسبقاً.", "close": "شكراً لتعاونك. أي التزام يتثبت في النظام بيحمي حسابك من التصعيد. تحت أمرك لو احتجت مساعدة.", "dont_say": ["متقفلش المتابعة قبل ما السداد يظهر فعلياً", "متسيبش زيارة مجدولة من غير تأكيد في الجدول الميداني"]}}};
+</script>
+<script>
+if(window.ChartDataLabels) Chart.register(ChartDataLabels);
+
+/* ===== Operational config (single place) ===== */
+var CONFIG = {
+  LEGAL_STALE_DAYS: 14,
+  NO_ANSWER_REPEAT_LIMIT: 2,
+  PTP_OVERDUE_DAYS: 3
+};
+
+var EMP_CODES = {'23478':{role:'موظف',name:'موظف تحصيل'}};
+var CALLS = (window.EMBEDDED_CALLS||[]).slice();
+var VISITS = (window.EMBEDDED_VISITS||[]).slice();
+var GROUPS = window.EMBEDDED_GROUPS || {};
+var fCalls = CALLS.slice(), fVisits = VISITS.slice();
+var charts = {};
+var doneAlerts = safeJSON('mylo_done_alerts', {}, 'local');
+var promStatus = safeJSON('mylo_prom_status', {}, 'local');
+
+function safeGet(store, key, fallback){
+  try {
+    if(store === 'session') return sessionStorage.getItem(key);
+    return localStorage.getItem(key);
+  } catch(e) {
+    return fallback !== undefined ? fallback : null;
+  }
+}
+function safeSet(store, key, val){
+  try {
+    if(store === 'session') sessionStorage.setItem(key, val);
+    else localStorage.setItem(key, val);
+  } catch(e) {}
+}
+function safeJSON(key, fallback, store){
+  store = store || 'local';
+  try {
+    var raw = safeGet(store, key, null);
+    if(raw == null || raw === '') return fallback;
+    return JSON.parse(raw);
+  } catch(e) { return fallback; }
+}
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function uniq(arr){ return Array.from(new Set(arr.filter(Boolean))).sort(); }
+
+/* Dates — local calendar, avoid TZ shift */
+function parseDate(str){
+  if(str==null || str==='') return null;
+  if(str instanceof Date) return isNaN(str.getTime())?null:str;
+  var s = String(str).trim();
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m){
+    var d = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+    return isNaN(d.getTime())?null:d;
+  }
+  var d2 = new Date(s.replace(' ','T'));
+  return isNaN(d2.getTime())?null:d2;
+}
+function toYMD(d){
+  if(!d) return '';
+  var y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return y+'-'+m+'-'+day;
+}
+function daysBetween(a,b){
+  if(!a||!b) return null;
+  return Math.floor((b.getTime()-a.getTime())/(24*3600*1000));
+}
+function rowDate(r, isVisit){
+  if(isVisit) return parseDate(r.submission_date || r.notes_date || r.created_at || r.updated_at);
+  return parseDate(r.call_started_at || r.created_at || r.ring_started_at || r.updated_at);
+}
+
+/* Field normalization for uploaded data */
+var FIELD_MAP = {
+  consumer_id:['consumer_id','consumerid','customer_id','client_id','معرف','id_client'],
+  consumer_phone_number:['consumer_phone_number','phone','phone_number','mobile','الهاتف','رقم_الهاتف'],
+  name:['name','agent_name','agent','employee','الموظف','اسم_الموظف'],
+  area:['area','region','المنطقة','zone'],
+  call_outcome:['call_outcome','outcome','result','نتيجة_المكالمة','call_result'],
+  visit_output:['visit_output','visit_outcome','visit_result','نتيجة_الزيارة'],
+  recommended_action:['recommended_action','action','الإجراء','next_action'],
+  notes:['notes','note','comment','comments','ملاحظات','الملاحظات'],
+  call_duration_seconds:['call_duration_seconds','call_duration','duration_seconds','مدة_المكالمة'],
+  ring_duration_seconds:['ring_duration_seconds','ring_duration','ring_seconds','مدة_الرنين'],
+  call_started_at:['call_started_at','call_date','started_at','date','تاريخ_المكالمة'],
+  created_at:['created_at','create_date','created'],
+  visit_state:['visit_state','state'],
+  call_state:['call_state'],
+  national_id:['national_id','nid','الرقم_القومي'] // kept but never shown in ops tables
+};
+function normalizeKey(k){
+  return String(k||'').trim().toLowerCase().replace(/\s+/g,'_');
+}
+function normalizeRow(row){
+  if(!row || typeof row!=='object') return row;
+  var out = {};
+  var lower = {};
+  Object.keys(row).forEach(function(k){ lower[normalizeKey(k)] = row[k]; out[k]=row[k]; });
+  Object.keys(FIELD_MAP).forEach(function(canon){
+    if(out[canon]!=null && String(out[canon]).trim()!=='') return;
+    FIELD_MAP[canon].forEach(function(alias){
+      var a = normalizeKey(alias);
+      if(lower[a]!=null && String(lower[a]).trim()!==''){
+        out[canon] = lower[a];
+      }
+    });
+  });
+  // never expose national_id into display helpers elsewhere
+  return out;
+}
+function normalizeRows(arr){
+  if(!Array.isArray(arr)) return [];
+  return arr.map(normalizeRow).filter(function(r){
+    return r && Object.keys(r).some(function(k){
+      if(k==='national_id') return false;
+      var v=r[k]; return v!=null && String(v).trim()!=='';
+    });
+  });
+}
+
+/* Auth */
+function unlock(){
+  var gate=$('loginGate'), shell=$('appShell');
+  if(gate){ gate.hidden=true; gate.classList.add('is-out'); gate.style.display='none'; }
+  if(shell){ shell.hidden=false; shell.classList.add('is-on'); shell.style.display='block'; shell.removeAttribute('hidden'); }
+  document.body.classList.add('unlocked');
+  try{
+    var u=safeJSON('mylo_emp',{},'session');
+    var chip=$('userChip');
+    if(chip) chip.textContent=(u.role||'موظف')+(u.code?(' · '+u.code):'');
+  }catch(e){}
+  try{ boot(); }catch(e){ console.error(e); }
+}
+function tryLogin(){
+  var input=$('empCode'), err=$('loginErr');
+  var code=String(input&&input.value||'').trim();
+  if(EMP_CODES[code]){
+    safeSet('session','mylo_emp', JSON.stringify({code:code, role:EMP_CODES[code].role, name:EMP_CODES[code].name}));
+    if(err){ err.hidden=true; err.style.display='none'; }
+    unlock();
+  } else {
+    if(err){ err.hidden=false; err.style.display='block'; }
+    if(input){ try{ input.focus(); input.select(); }catch(e){} }
+  }
+}
+window.tryLogin=tryLogin; window.doLogin=tryLogin; window.unlock=unlock;
+(function initAuth(){
+  function wire(){
+    var btn=$('loginBtn'), input=$('empCode');
+    if(btn) btn.onclick=function(e){ if(e) e.preventDefault(); tryLogin(); };
+    if(input) input.onkeydown=function(e){ if(e.key==='Enter'||e.keyCode===13){ e.preventDefault(); tryLogin(); } };
+  }
+  try{
+    var raw=safeGet('session','mylo_emp',null);
+    if(raw){
+      var u=JSON.parse(raw);
+      if(u&&u.code&&EMP_CODES[u.code]){ unlock(); return; }
+    }
+  }catch(e){}
+  wire();
+})();
+
+/* Nav + prefs */
+function showPanel(id){
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
+  document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-p')===id); });
+  var el=$('p-'+id); if(el) el.classList.add('active');
+  safeSet('local','mylo_tab', id);
+  if(id==='daily') renderDaily();
+  if(id==='alerts') renderAlerts();
+  if(id==='promises') renderPromises();
+}
+document.querySelectorAll('.nav-btn').forEach(function(b){
+  b.onclick=function(){ showPanel(b.getAttribute('data-p')); };
+});
+
+/* Filters + persist */
+function saveFilters(){
+  var o={
+    area:($('fArea')||{}).value||'',
+    agent:($('fAgent')||{}).value||'',
+    oc:($('fOutcome')||{}).value||'',
+    vo:($('fVisitOut')||{}).value||'',
+    from:($('fFrom')||{}).value||'',
+    to:($('fTo')||{}).value||'',
+    q:($('fSearch')||{}).value||''
+  };
+  safeSet('local','mylo_filters', JSON.stringify(o));
+}
+function restoreFilters(){
+  var o=safeJSON('mylo_filters', null, 'local');
+  if(!o) return;
+  if($('fArea')&&o.area) $('fArea').value=o.area;
+  if($('fAgent')&&o.agent) $('fAgent').value=o.agent;
+  if($('fOutcome')&&o.oc) $('fOutcome').value=o.oc;
+  if($('fVisitOut')&&o.vo) $('fVisitOut').value=o.vo;
+  if($('fFrom')&&o.from) $('fFrom').value=o.from;
+  if($('fTo')&&o.to) $('fTo').value=o.to;
+  if($('fSearch')&&o.q) $('fSearch').value=o.q;
+}
+function fillFilters(){
+  function set(id, vals){
+    var s=$(id); if(!s) return;
+    var cur=s.value;
+    s.innerHTML='<option value="">الكل</option>'+vals.map(function(v){return '<option value="'+esc(v)+'">'+esc(v)+'</option>';}).join('');
+    if(vals.indexOf(cur)>=0) s.value=cur;
+  }
+  set('fArea', uniq(CALLS.map(function(r){return r.area;}).concat(VISITS.map(function(r){return r.area;}))));
+  set('fAgent', uniq(CALLS.map(function(r){return r.name;}).concat(VISITS.map(function(r){return r.name;}))));
+  set('fOutcome', uniq(CALLS.map(function(r){return r.call_outcome;})));
+  set('fVisitOut', uniq(VISITS.map(function(r){return r.visit_output;})));
+}
+function applyFilters(){
+  var area=($('fArea')||{}).value||'';
+  var agent=($('fAgent')||{}).value||'';
+  var oc=($('fOutcome')||{}).value||'';
+  var vo=($('fVisitOut')||{}).value||'';
+  var from=($('fFrom')||{}).value||'';
+  var to=($('fTo')||{}).value||'';
+  var q=((($('fSearch')||{}).value)||'').trim().toLowerCase();
+  function matchQ(r){
+    if(!q) return true;
+    return [r.consumer_id,r.consumer_phone_number,r.notes,r.name,r.id].join(' ').toLowerCase().indexOf(q)>=0;
+  }
+  function matchDate(r, isVisit){
+    if(!from && !to) return true;
+    var d=rowDate(r, isVisit);
+    if(!d) return true;
+    if(from){ var f=parseDate(from); if(f && d<f) return false; }
+    if(to){
+      var t=parseDate(to);
+      if(t){ t=new Date(t.getFullYear(), t.getMonth(), t.getDate(), 23, 59, 59); if(d>t) return false; }
+    }
+    return true;
+  }
+  fCalls=CALLS.filter(function(r){
+    return (!area||r.area===area)&&(!agent||r.name===agent)&&(!oc||r.call_outcome===oc)&&matchQ(r)&&matchDate(r,false);
+  });
+  fVisits=VISITS.filter(function(r){
+    return (!area||r.area===area)&&(!agent||r.name===agent)&&(!vo||r.visit_output===vo)&&matchQ(r)&&matchDate(r,true);
+  });
+  saveFilters();
+  renderAll();
+}
+['fArea','fAgent','fOutcome','fVisitOut','fFrom','fTo','fSearch'].forEach(function(id){
+  document.addEventListener('change', function(e){ if(e.target && e.target.id===id) applyFilters(); });
+  document.addEventListener('input', function(e){ if(e.target && e.target.id==='fSearch') applyFilters(); });
+});
+if($('btnReset')) $('btnReset').onclick=function(){
+  ['fArea','fAgent','fOutcome','fVisitOut','fFrom','fTo','fSearch'].forEach(function(id){ if($(id)) $(id).value=''; });
+  saveFilters(); applyFilters();
+};
+
+/* Quality */
+function qualityScore(notes){
+  var n=String(notes||'');
+  var s=40;
+  if(n.length>20) s+=15;
+  if(n.length>60) s+=10;
+  if(/تاريخ|يوم|شهر|\d{1,2}[\/\-]\d{1,2}|الأسبوع|النهارده|بكرة/.test(n)) s+=15;
+  if(/عميل|مدين|أخ|والد|زوجة|قريب/.test(n)) s+=10;
+  if(/سداد|قسط|جدولة|إنذار|قانون/.test(n)) s+=10;
+  if(/[\u0600-\u06FF]{10,}/.test(n) && n.length>40) s+=5;
+  return Math.min(100,s);
+}
+
+/* Alerts engine */
+function buildAlerts(){
+  var list=[];
+  var now=new Date();
+  var naCount={};
+  fCalls.forEach(function(c){
+    if(c.call_outcome==='NO_ANSWER'){
+      var k=String(c.consumer_id||c.consumer_phone_number||c.id);
+      naCount[k]=(naCount[k]||0)+1;
+    }
+  });
+  Object.keys(naCount).forEach(function(k){
+    if(naCount[k]>=CONFIG.NO_ANSWER_REPEAT_LIMIT){
+      list.push({id:'na-'+k, level:'med', title:'تكرار NO_ANSWER ('+naCount[k]+')', d:'العميل/الهاتف: '+k, src:'call'});
+    }
+  });
+  fCalls.forEach(function(c){
+    if(c.call_outcome==='PROMISE_TO_PAY'){
+      var d=rowDate(c,false);
+      var age=d?daysBetween(d,now):null;
+      if(age!=null && age>CONFIG.PTP_OVERDUE_DAYS){
+        list.push({id:'c-ptp-'+c.id, level:'high', title:'PTP مكالمة متأخر ('+age+' يوم)', d:String(c.notes||c.consumer_id||'').slice(0,100), src:'call'});
+      } else if(!/تاريخ|يوم|شهر|\d/.test(String(c.notes||''))){
+        list.push({id:'c-date-'+c.id, level:'high', title:'وعد مكالمة بدون تاريخ', d:String(c.notes||'').slice(0,100)||String(c.consumer_id||''), src:'call'});
+      }
+    }
+  });
+  fVisits.forEach(function(v){
+    var n=String(v.notes||'');
+    if(v.visit_output==='PROMISE_TO_PAY'){
+      var d=rowDate(v,true);
+      var age=d?daysBetween(d,now):null;
+      if(age!=null && age>CONFIG.PTP_OVERDUE_DAYS){
+        list.push({id:'v-ptp-'+v.id, level:'high', title:'PTP زيارة متأخر ('+age+' يوم)', d:n.slice(0,100), src:'visit'});
+      }
+      if(!/تاريخ|يوم|شهر|\d/.test(n)){
+        list.push({id:'v-date-'+v.id, level:'high', title:'وعد زيارة بدون تاريخ واضح', d:(v.name||'—')+' · '+(v.area||'')+' · '+(v.consumer_id||''), src:'visit'});
+      }
+      if(/أخ|اخو|والد|زوجة|زوجه|قريب|جار/.test(n) && !/العميل نفسه|المدين/.test(n)){
+        list.push({id:'v-third-'+v.id, level:'med', title:'وعد من طرف ثالث — يلزم تأكيد المدين', d:n.slice(0,100), src:'visit'});
+      }
+    }
+    if(v.recommended_action==='LEGAL_ACTION' || /قانون|عدم الحضور/.test(n)){
+      var d2=rowDate(v,true);
+      var age2=d2?daysBetween(d2,now):null;
+      var stale = age2!=null && age2>=CONFIG.LEGAL_STALE_DAYS;
+      list.push({id:'v-legal-'+v.id, level:'high',
+        title: stale?('LEGAL_ACTION قديم ('+age2+' يوم)'):'إشارة تصعيد قانوني',
+        d:(v.consumer_id||'')+' · '+n.slice(0,90), src:'visit'});
+    }
+  });
+  return list.filter(function(a){ return !doneAlerts[a.id]; });
+}
+function renderAlerts(){
+  var list=buildAlerts();
+  if($('alertCount')) $('alertCount').textContent=list.length;
+  if($('alertChip')) $('alertChip').className='chip '+(list.length?(list.some(function(a){return a.level==='high';})?'danger':'warn'):'');
+  if(!list.length){
+    $('alertList').innerHTML='<div class="card">لا توجد تنبيهات مفتوحة على البيانات الحالية.</div>';
+    return;
+  }
+  $('alertList').innerHTML=list.map(function(a){
+    return '<div class="alert-item '+a.level+'"><div><div class="t">'+esc(a.title)+'</div><div class="d">'+esc(a.d)+'</div></div>'+
+      '<button class="btn" type="button" data-aid="'+esc(a.id)+'">تم المعالجة</button></div>';
+  }).join('');
+  $('alertList').querySelectorAll('button[data-aid]').forEach(function(b){
+    b.onclick=function(){
+      doneAlerts[b.getAttribute('data-aid')]=1;
+      safeSet('local','mylo_done_alerts', JSON.stringify(doneAlerts));
+      renderAlerts();
+    };
+  });
+}
+
+/* Promises */
+function buildPromises(){
+  var rows=[];
+  fCalls.filter(function(c){return c.call_outcome==='PROMISE_TO_PAY';}).forEach(function(c){
+    var id='c:'+c.id;
+    var st=promStatus[id]||'open';
+    var d=rowDate(c,false);
+    var age=d?daysBetween(d,new Date()):null;
+    if(st==='open' && age!=null && age>CONFIG.PTP_OVERDUE_DAYS) st='due';
+    rows.push({id:id, src:'مكالمة', consumer:c.consumer_id||c.consumer_phone_number, area:c.area, agent:c.name, date:toYMD(d), status:st});
+  });
+  fVisits.filter(function(v){return v.visit_output==='PROMISE_TO_PAY';}).forEach(function(v){
+    var id='v:'+v.id;
+    var st=promStatus[id]||'open';
+    var d=rowDate(v,true);
+    var age=d?daysBetween(d,new Date()):null;
+    if(st==='open' && age!=null && age>CONFIG.PTP_OVERDUE_DAYS) st='due';
+    rows.push({id:id, src:'زيارة', consumer:v.consumer_id, area:v.area, agent:v.name, date:toYMD(d), status:st});
+  });
+  return rows;
+}
+function renderPromises(){
+  var f=($('promFilter')||{}).value||'';
+  var rows=buildPromises();
+  if(f) rows=rows.filter(function(r){return r.status===f;});
+  var label={open:'قائم', due:'مستحق / متأخر', kept:'محقَّق', broken:'مخفق'};
+  $('promBody').innerHTML=rows.map(function(r){
+    return '<tr><td>'+esc(r.src)+'</td><td>'+esc(r.consumer)+'</td><td>'+esc(r.area)+'</td><td>'+esc(r.agent)+'</td><td>'+esc(r.date)+'</td>'+
+      '<td>'+esc(label[r.status]||r.status)+'</td><td>'+
+      '<button class="btn" data-p="'+esc(r.id)+'" data-s="kept">تأكيد سداد</button> '+
+      '<button class="btn" data-p="'+esc(r.id)+'" data-s="broken">إخفاق</button></td></tr>';
+  }).join('')||'<tr><td colspan="7">لا وعود</td></tr>';
+  $('promBody').querySelectorAll('button[data-p]').forEach(function(b){
+    b.onclick=function(){
+      promStatus[b.getAttribute('data-p')]=b.getAttribute('data-s');
+      safeSet('local','mylo_prom_status', JSON.stringify(promStatus));
+      renderPromises();
+    };
+  });
+}
+if($('promFilter')) $('promFilter').onchange=renderPromises;
+
+/* KPIs + charts */
+function countBy(arr, key){
+  var m={}; arr.forEach(function(r){ var k=r[key]||'—'; m[k]=(m[k]||0)+1; }); return m;
+}
+function avgNum(arr, key){
+  if(!arr.length) return 0;
+  var s=0,n=0;
+  arr.forEach(function(r){ var v=Number(r[key]); if(!isNaN(v)){ s+=v; n++; } });
+  return n?Math.round(s/n):0;
+}
+function renderKPIs(){
+  var c=fCalls, v=fVisits;
+  var pc=c.filter(function(r){return r.call_outcome==='PROMISE_TO_PAY';}).length;
+  var pv=v.filter(function(r){return r.visit_output==='PROMISE_TO_PAY';}).length;
+  var avgCall=avgNum(c,'call_duration_seconds');
+  var avgRing=avgNum(c,'ring_duration_seconds');
+  var cons=new Set(c.map(function(r){return r.consumer_id;}).concat(v.map(function(r){return r.consumer_id;})).filter(Boolean)).size;
+  var ag=new Set(c.map(function(r){return r.name;}).concat(v.map(function(r){return r.name;})).filter(Boolean)).size;
+  var legal=v.filter(function(r){return r.recommended_action==='LEGAL_ACTION';}).length;
+  var success=(c.length+v.length)?Math.round(((pc+pv)/(c.length+v.length))*100):0;
+  var high=(GROUPS.g1&&GROUPS.g1.items||[]).length;
+  var kpis=[
+    ['#db2777','المكالمات',c.length,'من '+CALLS.length],
+    ['#7c3aed','الزيارات',v.length,'من '+VISITS.length],
+    ['#059669','وعود مكالمات',pc,c.length?Math.round(pc/c.length*100)+'%':'0%'],
+    ['#0d9488','وعود زيارات',pv,v.length?Math.round(pv/v.length*100)+'%':'0%'],
+    ['#a855f7','نجاح ظاهري',success+'%','Promise / Total'],
+    ['#d97706','متوسط المكالمة',avgCall+' ث',''],
+    ['#f59e0b','متوسط الرنين',avgRing+' ث',''],
+    ['#ec4899','عملاء / موظفون',cons+' / '+ag,''],
+    ['#dc2626','مخاطر مرتفعة',high,'مجموعة التصعيد'],
+    ['#e11d48','LEGAL_ACTION',legal,'من الزيارات'],
+    ['#7c3aed','تنبيهات مفتوحة',buildAlerts().length,'لوحة المتابعة']
+  ];
+  $('kpiGrid').innerHTML=kpis.map(function(x){
+    return '<div class="kpi" style="--k:'+x[0]+'"><div class="l">'+x[1]+'</div><div class="v">'+x[2]+'</div><div class="s">'+x[3]+'</div></div>';
+  }).join('');
+  var alerts=buildAlerts().length;
+  $('mgrSummary').innerHTML='<h3>ملخص إداري — إدارة عمليات التحصيل</h3>'+
+    '<p>النشاط الحالي: <b>'+c.length+'</b> مكالمة و <b>'+v.length+'</b> زيارة · نجاح ظاهري <b>'+success+'%</b> · تنبيهات مفتوحة <b>'+alerts+'</b> · LEGAL_ACTION <b>'+legal+'</b>.</p>'+
+    '<ul><li>أولوية اليوم: إغلاق وعود بلا تاريخ + متابعة مجموعة المخاطر المرتفعة.</li>'+
+    '<li>المسار الودّي مفعّل للمجموعات القابلة للجدولة؛ لا حلول ودية قبل جدية مثبتة في مجموعة التصعيد.</li></ul>';
+}
+function pie(id, data){
+  var labels=Object.keys(data), values=Object.values(data);
+  if(charts[id]) charts[id].destroy();
+  var ctx=$(id); if(!ctx) return;
+  var total=values.reduce(function(a,b){return a+b;},0)||1;
+  charts[id]=new Chart(ctx,{
+    type: values.length>4?'bar':'doughnut',
+    data:{labels:labels, datasets:[{data:values, backgroundColor:['#ec4899','#7c3aed','#a855f7','#f472b6','#c4b5fd','#fb7185','#34d399','#fbbf24']}]},
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{position:'bottom',labels:{boxWidth:12,font:{size:10}}},
+        tooltip:{callbacks:{
+          label:function(ctx){
+            var v=ctx.raw||0; var p=Math.round(v/total*100);
+            return ' '+ctx.label+': '+v+' ('+p+'%)';
+          }
+        }},
+        datalabels:{color:'#1e1b2e',font:{weight:'bold',size:10},formatter:function(v){
+          return Math.round(v/total*100)+'%';
+        }}
+      },
+      scales: values.length>4?{x:{ticks:{font:{size:9}}},y:{beginAtZero:true}}:{}
+    },
+    plugins: window.ChartDataLabels?[ChartDataLabels]:[]
+  });
+}
+function renderCharts(){
+  pie('cOut', countBy(fCalls,'call_outcome'));
+  pie('cVout', countBy(fVisits,'visit_output'));
+  pie('cArea', countBy(fCalls.concat(fVisits),'area'));
+  pie('cAct', countBy(fCalls.concat(fVisits),'recommended_action'));
+  var daily={};
+  fCalls.forEach(function(r){ var d=toYMD(rowDate(r,false)); if(d) daily[d]=(daily[d]||0)+1; });
+  fVisits.forEach(function(r){ var d=toYMD(rowDate(r,true)); if(d) daily[d]=(daily[d]||0)+1; });
+  pie('cDaily', daily);
+  var ag={};
+  fCalls.forEach(function(r){ if(r.name) ag[r.name]=(ag[r.name]||0)+1; });
+  fVisits.forEach(function(r){ if(r.name) ag[r.name]=(ag[r.name]||0)+1; });
+  pie('cAgents', ag);
+}
+function renderDelta(){
+  var dates=[];
+  fCalls.forEach(function(r){ var d=toYMD(rowDate(r,false)); if(d) dates.push(d); });
+  fVisits.forEach(function(r){ var d=toYMD(rowDate(r,true)); if(d) dates.push(d); });
+  dates.sort();
+  var mid=dates[Math.floor(dates.length/2)]||'';
+  function half(arr, pred){ return arr.filter(pred).length; }
+  var c1=half(fCalls,function(r){ return toYMD(rowDate(r,false))<=mid; });
+  var c2=fCalls.length-c1;
+  var p1=half(fCalls,function(r){ return r.call_outcome==='PROMISE_TO_PAY' && toYMD(rowDate(r,false))<=mid; });
+  var p2=fCalls.filter(function(r){return r.call_outcome==='PROMISE_TO_PAY';}).length-p1;
+  function pct(a,b){ return b?Math.round((a-b)/b*100):0; }
+  var items=[
+    ['المكالمات (فترة أحدث vs أقدم)', c2, c1, pct(c2,c1)],
+    ['وعود المكالمات', p2, p1, pct(p2,p1)],
+    ['الزيارات', fVisits.length, Math.max(1,Math.floor(fVisits.length/2)), 0]
+  ];
+  $('deltaRow').innerHTML=items.map(function(t){
+    return '<div class="card"><h3>'+t[0]+'</h3><div class="kpi" style="border:none;box-shadow:none;padding:0"><div class="v">'+t[1]+'</div>'+
+      '<div class="s">السابق تقريباً '+t[2]+' · <span class="delta '+(t[3]>=0?'up':'down')+'">'+(t[3]>=0?'+':'')+t[3]+'%</span></div></div></div>';
+  }).join('');
+}
+
+/* Groups rebuild */
+window.myloRebuildGroups=function(visits, calls){
+  visits=visits||VISITS||[]; calls=calls||CALLS||[];
+  function itemFrom(row, isCall){
+    var id=row.consumer_id||row.id||row.consumer_phone_number||'—';
+    var sid=String(id);
+    return {
+      id: sid.length>12?sid.slice(0,8)+'…':sid, full_id:sid,
+      area:row.area||'—', agent:row.name||row.agent_iam_id||'—',
+      action:row.recommended_action||'—',
+      output:isCall?(row.call_outcome||'—'):(row.visit_output||'—'),
+      date:toYMD(rowDate(row,!isCall)), notes:row.notes||''
+    };
+  }
+  function ntext(row){ return String(row.notes||'').toLowerCase(); }
+  var g1=[],g2=[],g3=[],g4=[],g5=[];
+  visits.forEach(function(v){
+    var n=ntext(v), out=String(v.visit_output||''), act=String(v.recommended_action||''), it=itemFrom(v,false);
+    if(act==='LEGAL_ACTION'||out==='REFUSED_TO_PAY'||/قانون|رفض|عدم الحضور|نصب|سيئ التعامل|ديون كثير|اتخاذ الاجراء/.test(n)){ g1.push(it); return; }
+    if(/لم يتواجد|غير متواجد|لا يوجد احد|ترك انذار|ترك إنذار|لم يتم مقابلة|مغلق|خالي/.test(n)){ g4.push(it); return; }
+    if(act==='IN_APP_RESCHEDULING'||/جدولة|اعاده الجد|إعادة جد|قسط|سيسدد|هيسدد|وعد/.test(n)||out==='PROMISE_TO_PAY'){
+      if(/اخو|أخ|والد|زوجه|زوجة|قريب|جار/.test(n)&&!/العميل نفسه|المدين/.test(n)){ g2.push(it); return; }
+      g3.push(it); return;
+    }
+    if(/اخو|أخ|والد|زوجه|زوجة|قريب/.test(n)){ g2.push(it); return; }
+    g3.push(it);
+  });
+  calls.forEach(function(c){
+    var n=ntext(c), out=String(c.call_outcome||'');
+    if(out==='PROMISE_TO_PAY'||/سداد|زيارة|جدولة/.test(n)) g5.push(itemFrom(c,true));
+  });
+  function pack(id,title,color,icon,risk,desc,items,actions,scripts){
+    return {id:id,title:title,color:color,icon:icon,risk:risk,desc:desc,items:items,manager_actions:actions,scripts:scripts};
+  }
+  return {
+    g1:pack('g1','مجموعة 1 — مخاطر مرتفعة / إجراء قانوني','#ef4444','⚠️','عالي جداً','رفض صريح، سمعة سيئة، ديون متعددة، أو LEGAL_ACTION',g1,
+      ['إيقاف المسار الودي وتعيين LEGAL_ACTION','مراجعة الملف خلال 24 ساعة واعتماد التصعيد','تجهيز إنذارات + محاولات تواصل موثّقة'],
+      {opening:'أستاذ/ة [الاسم]، معاك [اسمك] من mylo بخصوص مستحقات متأخرة.',verify_pay:'نحتاج التزام واضح بتاريخ سداد من المدين شخصياً.',close:'هيتسجّل الموقف في النظام.',dont_say:['متوعدش بإجراء غير معتمد']}),
+    g2:pack('g2','مجموعة 2 — وعود أطراف ثالثة','#f59e0b','👥','متوسط-عالي','الوعد من قريب/طرف ثالث وليس من المدين',g2,
+      ['تأكيد رقم المدين وموعد تواصل مباشر','لا إغلاق وعد إلا بعد تأكيد المدين','تذكير قبل الموعد بيومين'],
+      {opening:'أستاذ/ة [الاسم]، متابعة للزيارة السابقة.',verify_pay:'الالتزام لازم يتأكد من المدين نفسه.',close:'هنعاود التواصل مع المدين مباشرة.',dont_say:['متعتبرش وعد القريب التزام نهائي']}),
+    g3:pack('g3','مجموعة 3 — فرص جدولة / مسار ودّي','#10b981','✅','متوسط','قابل للجدولة أو ترحيل قسط',g3,
+      ['عرض جدولة المديونية أو ترحيل القسط','تثبيت أول قسط وتاريخ الاستحقاق','متابعة السداد خلال 7 أيام'],
+      {opening:'أستاذ/ة [الاسم]، من mylo لتيسير السداد بحلول مطابقة للشريعة الإسلامية.',verify_pay:'نقدر نرتب جدولة ميسّرة عبر التطبيق.',close:'تثبيت أول قسط يحسّن وضع الحساب.',dont_say:['متصعّدش قبل فرصة جدولة']}),
+    g4:pack('g4','مجموعة 4 — غياب / إنذار ميداني','#6366f1','🏠','متوسط','عدم تواجد أو ترك إنذار',g4,
+      ['تحقق العنوان وأرقام بديلة','زيارة ثانية بموعد مختلف','توثيق الإنذار'],
+      {opening:'أستاذ/ة [الاسم]، بخصوص زيارة ميدانية.',message_text:'تم ترك إنذار بتاريخ [تاريخ].',close:'هنتابع خلال يومين.',dont_say:['متبنيش قرار على كلام الجيران وحده']}),
+    g5:pack('g5','مجموعة 5 — مكملات المكالمات','#06b6d4','📞','حسب الحالة','حالات من المكالمات تحتاج ربط',g5,
+      ['التحقق من السداد خلال 48 ساعة','تنفيذ الزيارة خلال 3–5 أيام','ربط المكالمة بخطة في النظام'],
+      {opening:'أستاذ/ة [الاسم]، متابعة للمكالمة السابقة.',verify_pay:'تأكيد مبلغ وتوقيت السداد؟',close:'أي التزام يتثبت في النظام.',dont_say:['متقفلش قبل ظهور السداد']})
+  };
+};
+function escStage(gid){
+  var steps=['تواصل ودي','وعد سداد','متابعة','إنذار','إجراء قانوني'];
+  var on= gid==='g1'?3:gid==='g2'?2:gid==='g4'?2:1;
+  return steps.map(function(s,i){ return '<span class="'+(i<on?'done':i===on?'on':'')+'">'+s+'</span>'; }).join('');
+}
+function bestSol(gid, notes){
+  var n=String(notes||'');
+  if(gid==='g1'||/قانون|رفض|عدم الحضور/.test(n)) return 'لا حل ودّي قبل جدية مثبتة وموافقة المدير · مسار LEGAL_ACTION';
+  if(/مرض|ظرف|إنسان/.test(n)) return 'ترحيل القسط (ظرف مؤقت) مع تاريخ استئناف واضح';
+  if(/تجار|محل|شغل|عمل/.test(n)) return 'جدولة المديونية عبر التطبيق + متابعة أول قسط';
+  if(gid==='g3') return 'جدولة المديونية / ترحيل القسط حسب القدرة';
+  return 'جدولة المديونية مع تثبيت تاريخ وأول قسط';
+}
+function renderGroups(){
+  var box=$('groupsBox'); if(!box) return;
+  box.innerHTML=Object.values(GROUPS).map(function(g){
+    var items=(g.items||[]).map(function(it){
+      return '<div class="case"><b>'+esc(it.id)+'</b> · '+esc(it.area)+' · '+esc(it.agent)+' · '+esc(it.output||'')+
+        '<p>'+esc(it.notes)+'</p><span class="sol">الحل الأنسب: '+esc(bestSol(g.id,it.notes))+'</span></div>';
+    }).join('');
+    var acts=(g.manager_actions||[]).map(function(a){return '<li>'+esc(a)+'</li>';}).join('');
+    var sc=g.scripts||{};
+    return '<div class="gcard" data-g="'+esc(g.id)+'"><div class="ghead" onclick="this.parentElement.classList.toggle(\'open\')">'+
+      '<h3>'+esc(g.icon||'')+' '+esc(g.title)+' <small style="color:var(--muted);font-weight:600">('+(g.items||[]).length+')</small></h3>'+
+      '<span class="chip">'+esc(g.risk||'')+'</span></div><div class="gbody">'+
+      '<p style="font-size:.8rem;color:var(--muted);margin:8px 0">'+esc(g.desc||'')+'</p>'+
+      '<div class="esc-path">'+escStage(g.id)+'</div>'+
+      '<div class="tabs2"><button type="button" class="on" data-t="cases">الحالات</button>'+
+      '<button type="button" data-t="mgr">إجراءات المدير</button><button type="button" data-t="script">نموذج التفاوض</button></div>'+
+      '<div class="gtab" data-tab="cases">'+(items||'<p>لا حالات</p>')+'</div>'+
+      '<div class="gtab" data-tab="mgr" hidden><ul style="padding-right:18px;font-size:.8rem;line-height:1.7">'+acts+'</ul></div>'+
+      '<div class="gtab" data-tab="script" hidden><div class="script-box">'+
+      '<div><b>افتتاح:</b> '+esc(sc.opening||'—')+'</div>'+
+      '<div><b>عرض/تحقق:</b> '+esc(sc.verify_pay||sc.schedule_visit||sc.message_text||'—')+'</div>'+
+      '<div><b>إغلاق:</b> '+esc(sc.close||'—')+'</div>'+
+      '<div class="dont"><b>لا يُقال:</b> '+((sc.dont_say||[]).map(esc).join(' · '))+'</div></div></div></div></div>';
+  }).join('');
+  box.querySelectorAll('.tabs2 button').forEach(function(btn){
+    btn.onclick=function(e){
+      e.stopPropagation();
+      var head=btn.parentElement;
+      head.querySelectorAll('button').forEach(function(x){x.classList.remove('on');});
+      btn.classList.add('on');
+      var body=head.parentElement;
+      body.querySelectorAll('.gtab').forEach(function(t){ t.hidden=t.getAttribute('data-tab')!==btn.getAttribute('data-t'); });
+    };
+  });
+}
+
+/* Agents */
+function renderAgents(){
+  var map={};
+  fCalls.forEach(function(r){
+    if(!r.name) return;
+    map[r.name]=map[r.name]||{name:r.name,calls:0,visits:0,scores:[]};
+    map[r.name].calls++; map[r.name].scores.push(qualityScore(r.notes));
+  });
+  fVisits.forEach(function(r){
+    if(!r.name) return;
+    map[r.name]=map[r.name]||{name:r.name,calls:0,visits:0,scores:[]};
+    map[r.name].visits++; map[r.name].scores.push(qualityScore(r.notes));
+  });
+  var list=Object.values(map).sort(function(a,b){return (b.calls+b.visits)-(a.calls+a.visits);});
+  var max=Math.max(1,...list.map(function(x){return x.calls+x.visits;}));
+  $('agentsBox').innerHTML=list.map(function(a,i){
+    var q=a.scores.length?Math.round(a.scores.reduce(function(s,x){return s+x;},0)/a.scores.length):0;
+    var cls=q>=75?'good':q>=55?'mid':'bad';
+    var tip='حافظ على توثيق التاريخ وطرف التواصل في كل وعد.';
+    if(q<55) tip='جودة التوثيق منخفضة: ألزم بتسجيل تاريخ السداد ومَن وعد قبل إغلاق الحالة.';
+    if(a.calls+a.visits>=max && q>=70) tip='أداء قوي — استخدمه كنموذج في مراجعة الفريق اليومية.';
+    return '<div class="agent-row"><div style="min-width:28px;font-weight:800">#'+(i+1)+'</div>'+
+      '<div style="min-width:140px"><b>'+esc(a.name)+'</b><div style="font-size:.7rem;color:var(--muted)">'+a.calls+' مكالمة · '+a.visits+' زيارة</div></div>'+
+      '<div class="bar"><i style="width:'+Math.round((a.calls+a.visits)/max*100)+'%"></i></div>'+
+      '<div class="qscore '+cls+'" title="جودة التوثيق">'+q+'%</div>'+
+      '<div style="flex:1;font-size:.75rem;color:var(--muted)">'+tip+'</div></div>';
+  }).join('')||'<div class="card">لا بيانات</div>';
+}
+
+/* Daily */
+function renderDaily(){
+  var c=fCalls,v=fVisits;
+  var pc=c.filter(function(r){return r.call_outcome==='PROMISE_TO_PAY';}).length;
+  var pv=v.filter(function(r){return r.visit_output==='PROMISE_TO_PAY';}).length;
+  var ag={};
+  c.forEach(function(r){ if(r.name) ag[r.name]=(ag[r.name]||0)+1; });
+  v.forEach(function(r){ if(r.name) ag[r.name]=(ag[r.name]||0)+1; });
+  var top=Object.entries(ag).sort(function(a,b){return b[1]-a[1];}).slice(0,3);
+  var alerts=buildAlerts().slice(0,5);
+  var text='تقرير المدير — إدارة عمليات التحصيل mylo\nالتاريخ: '+new Date().toLocaleDateString('ar-EG')+
+    '\n━━━━━━━━━━━━━━━━━━━━\nالنشاط: '+c.length+' مكالمة · '+v.length+' زيارة\nوعود: '+pc+' مكالمات · '+pv+' زيارات\nتنبيهات مفتوحة: '+buildAlerts().length+
+    '\n\nأعلى الموظفين نشاطاً:\n'+(top.map(function(x,i){return (i+1)+'. '+x[0]+' ('+x[1]+')';}).join('\n')||'—')+
+    '\n\nأخطر التنبيهات:\n'+(alerts.map(function(a,i){return (i+1)+'. '+a.title+' — '+a.d;}).join('\n')||'لا تنبيهات')+
+    '\n\nقرارات مقترحة:\n• متابعة وعود بلا تاريخ خلال 24 ساعة\n• تصعيد مجموعة المخاطر المرتفعة بعد استكمال ملف الإنذار\n• تفعيل جدولة mylo للفرص الودية اليوم\n━━━━━━━━━━━━━━━━━━━━\nحلول مطابقة للشريعة الإسلامية · للاستخدام الداخلي';
+  $('dailyReport').innerHTML='<pre style="white-space:pre-wrap;font-family:inherit">'+esc(text)+'</pre>';
+  $('dailyReport').dataset.raw=text;
+}
+if($('btnCopyDaily')) $('btnCopyDaily').onclick=async function(){
+  var t=$('dailyReport').dataset.raw||'';
+  try{ await navigator.clipboard.writeText(t); $('btnCopyDaily').textContent='تم النسخ'; setTimeout(function(){ $('btnCopyDaily').textContent='نسخ الملخص'; },1500);}catch(e){ alert('انسخ يدوياً من التقرير'); }
+};
+
+/* Messages */
+var MSGS=[
+  ['تذكير وعد سداد','أستاذ/ة [الاسم]، تذكير ودي بوعد السداد المتفق عليه بتاريخ [التاريخ]. للتواصل: [رقم التواصل]. — mylo'],
+  ['تأكيد جدولة','أستاذ/ة [الاسم]، تم رصد رغبتكم في جدولة المديونية. برجاء إكمال الطلب عبر التطبيق. — mylo'],
+  ['إشعار إنذار','أستاذ/ة [الاسم]، تم ترك إنذار على العنوان المسجّل بتاريخ [التاريخ]. يرجى التواصل خلال 48 ساعة على [رقم التواصل].'],
+  ['دعوة تواصل','أستاذ/ة [الاسم]، نرجو التواصل مع فريق التحصيل على [رقم التواصل] لمناقشة وضع الحساب واختيار الحل الأنسب.']
+];
+if($('msgGrid')){
+  $('msgGrid').innerHTML=MSGS.map(function(m){
+    return '<div class="msg-card"><h4>'+m[0]+'</h4><p>'+m[1]+'</p><button class="btn" type="button" data-msg="'+esc(m[1])+'">نسخ</button></div>';
+  }).join('');
+  $('msgGrid').querySelectorAll('button[data-msg]').forEach(function(b){
+    b.onclick=async function(){ try{ await navigator.clipboard.writeText(b.getAttribute('data-msg')); b.textContent='تم'; setTimeout(function(){ b.textContent='نسخ'; },1200);}catch(e){} };
+  });
+}
+
+/* Quick customer */
+function renderQuick(){
+  var q=((($('quickSearch')||{}).value)||'').trim().toLowerCase();
+  if(!q){ $('quickCard').innerHTML='<p style="color:var(--muted)">أدخل معرف أو هاتف</p>'; return; }
+  var call=CALLS.find(function(r){ return String(r.consumer_id||'').toLowerCase().indexOf(q)>=0||String(r.consumer_phone_number||'').indexOf(q)>=0; });
+  var visit=VISITS.find(function(r){ return String(r.consumer_id||'').toLowerCase().indexOf(q)>=0||String(r.notes||'').toLowerCase().indexOf(q)>=0; });
+  var group='—';
+  Object.values(GROUPS).forEach(function(g){ (g.items||[]).forEach(function(it){
+    if(String(it.full_id||it.id||'').toLowerCase().indexOf(q)>=0||String(it.notes||'').toLowerCase().indexOf(q)>=0) group=g.title;
+  });});
+  if(!call&&!visit){ $('quickCard').innerHTML='<p>لا نتائج</p>'; return; }
+  var notes=String((visit||call||{}).notes||'').slice(0,180);
+  $('quickCard').innerHTML='<div style="font-weight:800;margin-bottom:8px">بطاقة عميل سريعة</div><div style="font-size:.8rem;line-height:1.7">'+
+    '<div>آخر مكالمة: <b>'+esc(call?call.call_outcome:'—')+'</b> · '+esc(call?call.name:'—')+' · '+esc(call?call.area:'—')+'</div>'+
+    '<div>آخر زيارة: <b>'+esc(visit?visit.visit_output:'—')+'</b> · '+esc(visit?visit.recommended_action:'—')+'</div>'+
+    '<div>المجموعة: <b>'+esc(group)+'</b></div>'+
+    '<div style="margin-top:6px;color:var(--muted)">'+esc(notes)+'</div></div>';
+}
+if($('btnQuick')) $('btnQuick').onclick=renderQuick;
+if($('quickSearch')) $('quickSearch').onkeydown=function(e){ if(e.key==='Enter') renderQuick(); };
+
+/* Tables — no national_id */
+function renderTables(){
+  $('callsBody').innerHTML=fCalls.map(function(r){
+    return '<tr><td>'+esc(r.name)+'</td><td>'+esc(r.area)+'</td><td>'+esc(r.call_outcome)+'</td><td>'+esc(r.recommended_action)+'</td><td>'+esc(String(r.notes||'').slice(0,80))+'</td></tr>';
+  }).join('');
+  $('visitsBody').innerHTML=fVisits.map(function(r){
+    return '<tr><td>'+esc(r.name)+'</td><td>'+esc(r.area)+'</td><td>'+esc(r.visit_output)+'</td><td>'+esc(r.recommended_action)+'</td><td>'+esc(String(r.notes||'').slice(0,80))+'</td></tr>';
+  }).join('');
+}
+
+function renderAll(){
+  renderKPIs(); renderCharts(); renderDelta(); renderGroups(); renderAgents(); renderTables(); renderAlerts(); renderPromises();
+}
+
+/* Upload: Excel / CSV / JSON multi-structure */
+function sheetToRows(sheet){
+  if(!sheet) return [];
+  var rows=XLSX.utils.sheet_to_json(sheet,{defval:null,raw:false});
+  return normalizeRows(rows);
+}
+function parseExcel(buf){
+  var wb=XLSX.read(buf,{type:'array',cellDates:true});
+  var names=wb.SheetNames||[];
+  var lower={}; names.forEach(function(n){ lower[String(n).toLowerCase()]=n; });
+  var callName=lower['call']||lower['calls']||lower['مكالمات']||names[0];
+  var visitName=lower['visit']||lower['visits']||lower['زيارات']||names[1];
+  var calls=callName?sheetToRows(wb.Sheets[callName]):[];
+  var visits=visitName?sheetToRows(wb.Sheets[visitName]):[];
+  if(!calls.length&&visits.length){
+    var s=visits[0]||{};
+    if(s.call_outcome!=null||s.call_state!=null){ calls=visits; visits=[]; }
+  }
+  if(!visits.length&&calls.length){
+    var s2=calls[0]||{};
+    if(s2.visit_output!=null||s2.visit_state!=null){ visits=calls; calls=[]; }
+  }
+  return {calls:calls,visits:visits,sheets:names};
+}
+function parseJSONFlexible(text){
+  var data=JSON.parse(text);
+  var calls=[], visits=[];
+  if(Array.isArray(data)){
+    var norm=normalizeRows(data);
+    if(norm[0]&&(norm[0].call_outcome!=null||norm[0].call_state!=null||norm[0].call_duration_seconds!=null)) calls=norm;
+    else if(norm[0]&&(norm[0].visit_output!=null||norm[0].visit_state!=null)) visits=norm;
+    else calls=norm;
+  } else if(data&&typeof data==='object'){
+    if(Array.isArray(data.calls)) calls=normalizeRows(data.calls);
+    if(Array.isArray(data.visits)) visits=normalizeRows(data.visits);
+    if(Array.isArray(data.call)) calls=normalizeRows(data.call);
+    if(Array.isArray(data.visit)) visits=normalizeRows(data.visit);
+    if(Array.isArray(data.data)){
+      var n=normalizeRows(data.data);
+      if(n[0]&&n[0].visit_output!=null) visits=n; else calls=n;
+    }
+    if(Array.isArray(data.records)){
+      var n2=normalizeRows(data.records);
+      if(n2[0]&&n2[0].visit_output!=null) visits=n2; else calls=n2;
+    }
+  }
+  return {calls:calls,visits:visits};
+}
+function parseCSVText(text){
+  if(typeof XLSX==='undefined') throw new Error('XLSX missing');
+  var wb=XLSX.read(text,{type:'string'});
+  var sheet=wb.Sheets[wb.SheetNames[0]];
+  var rows=sheetToRows(sheet);
+  if(rows[0]&&(rows[0].call_outcome!=null||rows[0].call_state!=null)) return {calls:rows,visits:[]};
+  if(rows[0]&&(rows[0].visit_output!=null||rows[0].visit_state!=null)) return {calls:[],visits:rows};
+  return {calls:rows,visits:[]};
+}
+window.myloApplyData=function(calls, visits, label){
+  try{
+    if(Array.isArray(calls)&&calls.length){ CALLS=normalizeRows(calls); window.CALLS=CALLS; }
+    if(Array.isArray(visits)&&visits.length){ VISITS=normalizeRows(visits); window.VISITS=VISITS; }
+    try{
+      var rebuilt=window.myloRebuildGroups(VISITS, CALLS);
+      GROUPS=rebuilt; window.GROUPS=rebuilt; window.EMBEDDED_GROUPS=rebuilt;
+    }catch(ge){ console.error(ge); }
+    fillFilters(); applyFilters();
+    var st=$('uploadStatus');
+    if(st) st.textContent=(label||'تم تحديث البيانات')+' · مكالمات: '+CALLS.length+' · زيارات: '+VISITS.length;
+  }catch(e){
+    var st2=$('uploadStatus'); if(st2) st2.textContent='خطأ بعد التحميل: '+e.message;
+    console.error(e);
+  }
+};
+window.myloUpload=function(){
+  var fi=$('fileInput');
+  if(!fi){
+    fi=document.createElement('input'); fi.type='file'; fi.id='fileInput'; fi.multiple=true;
+    fi.accept='.xlsx,.xls,.csv,.json,application/json,text/csv,*/*';
+    document.body.appendChild(fi);
+  }
+  fi.onchange=function(){
+    var files=fi.files; if(!files||!files.length) return;
+    var st=$('uploadStatus');
+    var pending=files.length;
+    var lastCalls=CALLS.slice(), lastVisits=VISITS.slice();
+    var messages=[];
+    function doneOne(){
+      pending--;
+      if(pending<=0) window.myloApplyData(lastCalls, lastVisits, messages.join(' | ')||'تم التحديث');
+    }
+    for(var i=0;i<files.length;i++){
+      (function(file){
+        var n=(file.name||'').toLowerCase();
+        if(st) st.textContent='جاري قراءة '+file.name+'...';
+        if(n.endsWith('.xlsx')||n.endsWith('.xls')){
+          var r=new FileReader();
+          r.onload=function(ev){
+            try{
+              var p=parseExcel(ev.target.result);
+              if(p.calls&&p.calls.length) lastCalls=p.calls;
+              if(p.visits&&p.visits.length) lastVisits=p.visits;
+              messages.push(file.name+' (call:'+(p.calls||[]).length+', visit:'+(p.visits||[]).length+')');
+            }catch(err){ messages.push(file.name+' خطأ Excel'); console.error(err); }
+            doneOne();
+          };
+          r.onerror=function(){ messages.push(file.name+' فشل'); doneOne(); };
+          r.readAsArrayBuffer(file);
+        } else if(n.endsWith('.json')){
+          var r2=new FileReader();
+          r2.onload=function(ev){
+            try{
+              var p=parseJSONFlexible(ev.target.result);
+              if(p.calls&&p.calls.length) lastCalls=p.calls;
+              if(p.visits&&p.visits.length) lastVisits=p.visits;
+              messages.push(file.name+' JSON');
+            }catch(err){ messages.push(file.name+' JSON خطأ'); }
+            doneOne();
+          };
+          r2.readAsText(file);
+        } else if(n.endsWith('.csv')){
+          var r3=new FileReader();
+          r3.onload=function(ev){
+            try{
+              var p=parseCSVText(ev.target.result);
+              if(p.calls&&p.calls.length) lastCalls=p.calls;
+              if(p.visits&&p.visits.length) lastVisits=p.visits;
+              messages.push(file.name+' CSV:'+((p.calls||[]).length+(p.visits||[]).length));
+            }catch(err){ messages.push(file.name+' CSV خطأ'); console.error(err); }
+            doneOne();
+          };
+          r3.readAsText(file);
+        } else {
+          messages.push(file.name+' (غير مدعوم)');
+          doneOne();
+        }
+      })(files[i]);
+    }
+    try{ fi.value=''; }catch(e){}
+  };
+  try{ fi.click(); }catch(err){ alert('تعذر فتح اختيار الملفات'); }
+};
+function exportCSV(type){
+  var rows=type==='calls'?fCalls:fVisits;
+  if(!rows.length) return;
+  var keys=Object.keys(rows[0]).filter(function(k){ return k!=='national_id' && normalizeKey(k)!=='national_id'; });
+  var lines=[keys.join(',')].concat(rows.map(function(r){
+    return keys.map(function(k){ return '"'+String(r[k]==null?'':r[k]).replace(/"/g,'""')+'"'; }).join(',');
+  }));
+  var blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8;'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=type+'_export.csv'; a.click();
+}
+if($('btnUpload')) $('btnUpload').onclick=function(e){ e.preventDefault(); window.myloUpload(); };
+if($('btnRefresh')) $('btnRefresh').onclick=function(){ applyFilters(); };
+if($('btnExpCalls')) $('btnExpCalls').onclick=function(){ exportCSV('calls'); };
+if($('btnExpVisits')) $('btnExpVisits').onclick=function(){ exportCSV('visits'); };
+if($('btnPrint')) $('btnPrint').onclick=function(){ window.print(); };
+if($('btnExec')) $('btnExec').onclick=function(){
+  document.body.classList.toggle('exec-mode');
+  var on=document.body.classList.contains('exec-mode');
+  safeSet('local','mylo_exec', on?'1':'0');
+  $('btnExec').textContent=on?'وضع عادي':'وضع المدير';
+};
+if($('alertChip')) $('alertChip').onclick=function(){ showPanel('alerts'); };
+
+function boot(){
+  fillFilters();
+  restoreFilters();
+  var tab=safeGet('local','mylo_tab',null)||'overview';
+  showPanel(tab);
+  if(safeGet('local','mylo_exec',null)==='1'){
+    document.body.classList.add('exec-mode');
+    if($('btnExec')) $('btnExec').textContent='وضع عادي';
+  }
+  applyFilters();
+}
+</script>
+</body>
+</html>
